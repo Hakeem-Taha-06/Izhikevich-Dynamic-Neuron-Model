@@ -1,0 +1,1 @@
+# Izhikevich-Dynamic-Neuron-Model
