@@ -216,3 +216,32 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ==============================================================================
+# IDE Custom Configurations
+# ==============================================================================
+# VS Code Settings
+.vscode/
+
+# Spyder Project Settings
+.spyderproject/
+.spyproject/
+.spyder/
+
+# Antigravity & Gemini Agent Workspace Metadata
+.gemini/
+.antigravity/
+
+# ==============================================================================
+# Project Generated Outputs
+# ==============================================================================
+# Ignore generated data CSVs and plot outputs, but keep the directory using .gitkeep
+data/*.csv
+!data/.gitkeep
+data/*.png
+data/*.jpg
+data/*.jpeg
+
+# PyTorch Model Weights
+*.pt
+*.pth
