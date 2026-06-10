@@ -235,13 +235,20 @@ __marimo__/
 # ==============================================================================
 # Project Generated Outputs
 # ==============================================================================
-# Ignore generated data CSVs and plot outputs, but keep the directory using .gitkeep
+# Ignore generated data CSVs, but keep the directory using .gitkeep
 data/*.csv
 !data/.gitkeep
-data/*.png
-data/*.jpg
-data/*.jpeg
 
-# PyTorch Model Weights
-*.pt
-*.pth
+# Ignore generated figures, but keep the directory and its README
+outputs/figures/*.png
+outputs/figures/*.jpg
+outputs/figures/*.jpeg
+outputs/figures/*.svg
+!outputs/figures/.gitkeep
+!outputs/figures/FIGURES_README.md
+
+# Ignore trained model weights, but keep the directory and its README
+outputs/models/*.pt
+outputs/models/*.pth
+!outputs/models/.gitkeep
+!outputs/models/MODELS_README.md

@@ -14,50 +14,70 @@ Izhikevich-Dynamic-Neuron-Model/
 ├── LICENSE                   # Project license
 ├── ROLES.md                  # Detailed team labor distribution and contracts
 ├── README.md                 # Project documentation (this file)
-├── data/
-│   └── .gitkeep              # Keeps the folder in version control
+│
+├── data/                     # Raw input data (ground truth CSVs)
+│   └── .gitkeep
+│
+├── outputs/
+│   ├── figures/              # All generated plots and visualizations
+│   │   ├── FIGURES_README.md # Guide: what figures go here and naming rules
+│   │   └── .gitkeep
+│   └── models/               # Trained PyTorch model weights (.pt)
+│       ├── MODELS_README.md  # Guide: how to save, load, and share weights
+│       └── .gitkeep
+│
 └── src/
-    ├── __init__.py           # Package initializer
+    ├── __init__.py
     ├── numerical/
-    │   ├── __init__.py       # Numerical solvers package initializer
-    │   ├── baseline_lsoda.py # Role 3: Baseline LSODA Solver (SciPy solve_ivp)
-    │   ├── explicit_rk4.py   # Role 4: Explicit 4th-Order Runge-Kutta Solver
-    │   └── implicit_backward_euler.py # Role 5: Implicit Backward Euler Solver
+    │   ├── __init__.py
+    │   ├── baseline_lsoda.py           # Role 3: Baseline LSODA Solver
+    │   ├── baseline_lsoda_notes.md     # Role 3: Documentation
+    │   ├── explicit_rk4.py             # Role 4: Explicit RK4 Solver
+    │   ├── explicit_rk4_notes.md       # Role 4: Documentation
+    │   ├── implicit_backward_euler.py  # Role 5: Implicit Backward Euler Solver
+    │   └── implicit_backward_euler_notes.md  # Role 5: Documentation
     ├── ml_pinn/
-    │   ├── __init__.py       # PINN package initializer
-    │   ├── architecture.py   # Role 6: PyTorch Neural Network Architecture
-    │   ├── physics_loss.py   # Role 7: Custom PyTorch Physics-Informed Loss
-    │   └── train.py          # Role 8: PINN Training Loop & Predictor
+    │   ├── __init__.py
+    │   ├── architecture.py             # Role 6: PyTorch Neural Network
+    │   ├── architecture_notes.md       # Role 6: Documentation
+    │   ├── physics_loss.py             # Role 7: Physics-Informed Loss
+    │   ├── physics_loss_notes.md       # Role 7: Documentation
+    │   ├── train.py                    # Role 8: PINN Training Loop
+    │   └── train_notes.md              # Role 8: Documentation
     └── evaluation/
-        ├── __init__.py       # Evaluation package initializer
-        ├── evaluator_rmse.py # Role 9: Ground Truth Generator & RMSE Evaluator
-        └── bifurcation_physics.py # Role 10: Bifurcation Threshold sweeping
+        ├── __init__.py
+        ├── evaluator_rmse.py           # Role 9: RMSE Evaluator
+        ├── evaluator_rmse_notes.md     # Role 9: Documentation
+        ├── bifurcation_physics.py      # Role 10: Bifurcation Analysis
+        └── bifurcation_physics_notes.md  # Role 10: Documentation
 ```
 
 ---
 
 ## 🤝 Team Labor Distribution & Workspace Contracts
 
-The project is structured across 10 distinct engineering roles:
+The project is structured across 10 distinct engineering roles. See [ROLES.md](ROLES.md) for full details.
 
-| Phase / Role | Assigned Team Member Role | Primary Workspace File | Key Responsibility |
+| Phase | Role | Code File | Notes File |
 |---|---|---|---|
-| **Phase 0** | **Role 1**: Team Leader & Editor | `main.py` | Repository management, final pipeline integration, paper compile. |
-| | **Role 2**: Literature Reviewer | N/A (Paper Only) | Academic research and biological context writing. |
-| **Phase 1** | **Role 3**: Math Modeler & Baseline Dev | `src/numerical/baseline_lsoda.py` | Biological constants, gating rates, LSODA baseline. |
-| **Phase 2** | **Role 4**: Explicit Solver Dev | `src/numerical/explicit_rk4.py` | RK4 integration method & stability breakdown analysis. |
-| | **Role 5**: Implicit Solver Dev | `src/numerical/implicit_backward_euler.py` | Backward Euler method using root-finding loops. |
-| **Phase 3** | **Role 6**: ML Architect | `src/ml_pinn/architecture.py` | Deep neural network architecture using differentiable activations. |
-| | **Role 7**: ML Loss Designer | `src/ml_pinn/physics_loss.py` | Custom PyTorch Autograd physics-informed loss function. |
-| | **Role 8**: ML Training Operator | `src/ml_pinn/train.py` | Training loop, convergence tuning, trajectory export. |
-| **Phase 4** | **Role 9**: Master Evaluator | `src/evaluation/evaluator_rmse.py` | Ground truth dataset generation, RMSE, and runtime benchmarking. |
-| | **Role 10**: Physics Coherency Analyst | `src/evaluation/bifurcation_physics.py` | $I_{ext}$ bifurcation sweep and crash testing. |
+| **Phase 0** | Role 1: Team Leader | `main.py` | — |
+| | Role 2: Literature Reviewer | N/A (Paper Only) | — |
+| **Phase 1** | Role 3: Math Modeler & Baseline | `src/numerical/baseline_lsoda.py` | `baseline_lsoda_notes.md` |
+| **Phase 2** | Role 4: Explicit Solver (RK4) | `src/numerical/explicit_rk4.py` | `explicit_rk4_notes.md` |
+| | Role 5: Implicit Solver (BE) | `src/numerical/implicit_backward_euler.py` | `implicit_backward_euler_notes.md` |
+| **Phase 3** | Role 6: ML Architect | `src/ml_pinn/architecture.py` | `architecture_notes.md` |
+| | Role 7: ML Loss Designer | `src/ml_pinn/physics_loss.py` | `physics_loss_notes.md` |
+| | Role 8: ML Training Operator | `src/ml_pinn/train.py` | `train_notes.md` |
+| **Phase 4** | Role 9: Evaluator | `src/evaluation/evaluator_rmse.py` | `evaluator_rmse_notes.md` |
+| | Role 10: Crash Tester | `src/evaluation/bifurcation_physics.py` | `bifurcation_physics_notes.md` |
+
+Each role has a `_notes.md` file alongside their `.py` file. **You must fill in your notes file** with the method documentation, tables, and analysis described inside it.
 
 ---
 
 ## 📐 Master Interface Contract
 
-To ensure seamless integration across the numerical and machine learning phases, **all solvers must strictly adhere to the following output format**:
+**ALL solvers must strictly adhere to the following output format:**
 
 - **Return Type:** NumPy array of shape `(N, 5)`
 - **Column Order:** `[Time, Voltage, m, h, n]`
@@ -69,10 +89,19 @@ To ensure seamless integration across the numerical and machine learning phases,
 
 ---
 
+## 📁 Output Directories
+
+| Directory | Purpose | Guide |
+|-----------|---------|-------|
+| `data/` | Ground truth CSV datasets | Produced by Role 9 |
+| `outputs/figures/` | All generated plots (trajectories, bifurcation, loss curves) | See [FIGURES_README.md](outputs/figures/FIGURES_README.md) |
+| `outputs/models/` | Trained PyTorch model weights (`.pt`) | See [MODELS_README.md](outputs/models/MODELS_README.md) |
+
+---
+
 ## 🚀 Getting Started
 
 ### 1. Prerequisites
-Create a virtual environment and install the required dependencies:
 ```bash
 # Create a virtual environment
 python -m venv .venv
@@ -88,8 +117,8 @@ pip install -r requirements.txt
 ```
 
 ### 2. Running the Pipeline
-Once the team members have populated their respective workspace files with their solver logic, you can execute the entire pipeline using:
+Once the team members have populated their respective workspace files:
 ```bash
 python main.py
 ```
-This will run the numerical simulations, train the PINN, compare all models, and save generated data/graphs to the `data/` folder.
+This will run the numerical simulations, train the PINN, compare all models, and save outputs to `data/` and `outputs/`.
