@@ -8,9 +8,9 @@ This module is reserved for the baseline dataset pipeline and its narrative cont
 Model Reference
 ---------------
 Izhikevich (2007) generalized biophysical model:
-    C_m * dv/dt = k*(v - v_r)*(v - v_t) - u + I_ext
-    du/dt       = a*{ b*(v - v_r) - u }
-    if v >= v_peak:  v <- c,  u <- u + d
+    C_m * dv/dt = k*(v - v_r)*(v - v_t) - w + I_ext
+    dw/dt       = a*{ b*(v - v_r) - w }
+    if v >= v_peak:  v <- c,  w <- w + d
 
 Required `config.py` imports
 ----------------------------
@@ -30,7 +30,7 @@ Must achieve
 
 Strict output interface rule
 -----------------------------
-All numerical and ML predictive outputs must return `numpy.ndarray` of shape `(N, 3)` ordered as `[Time, v, u]`.
+All numerical and ML predictive outputs must return `numpy.ndarray` of shape `(N, 3)` ordered as `[Time, v, w]`.
 
 Constraints
 -----------
@@ -60,12 +60,12 @@ from config import *
 # ODE system
 # =====================================================
 def neuron_ode(t, y, I_ext):
-    v, u = y
+    v, w = y
 
-    dv = (k * (v - v_r) * (v - v_t) - u + I_ext) / C_m
-    du = a * (b * (v - v_r) - u)
+    dv = (k * (v - v_r) * (v - v_t) - w + I_ext) / C_m
+    dw = a * (b * (v - v_r) - w)
 
-    return [dv, du]
+    return [dv, dw]
 
 
 def spike_event(t, y, I_ext):
@@ -128,7 +128,7 @@ def run_single_simulation(I_ext, V0, U0):
     return pd.DataFrame({
         "Time (ms)": all_times,
         "v (mV)": all_v,
-        "u (pA)": all_u
+        "w (pA)": all_u
     })
 
 
@@ -191,7 +191,7 @@ if __name__ == "__main__":
                         "Time (ms)",
                         "I_ext (pA)",
                         "v (mV)",
-                        "u (pA)"
+                        "w (pA)"
                     ]
                 ]
 

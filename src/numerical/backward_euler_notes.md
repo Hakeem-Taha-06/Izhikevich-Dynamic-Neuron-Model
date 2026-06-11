@@ -11,13 +11,13 @@
 
 The Izhikevich (2007) generalized biophysical model:
 
-$$C_m \frac{dv}{dt} = k(v - v_r)(v - v_t) - u + I_{ext} \tag{1}$$
+$$C_m \frac{dv}{dt} = k(v - v_r)(v - v_t) - w + I_{ext} \tag{1}$$
 
-$$\frac{du}{dt} = a\bigl[b(v - v_r) - u\bigr] \tag{2}$$
+$$\frac{dw}{dt} = a\bigl[b(v - v_r) - w\bigr] \tag{2}$$
 
 **Discrete after-spike reset (non-smooth discontinuity):**
 
-$$\text{if } v \ge v_{peak}: \quad v \leftarrow c, \quad u \leftarrow u + d \tag{3}$$
+$$\text{if } v \ge v_{peak}: \quad v \leftarrow c, \quad w \leftarrow w + d \tag{3}$$
 
 **Default parameters (Regular Spiking — `config.py`):**
 
@@ -31,7 +31,7 @@ $$\text{if } v \ge v_{peak}: \quad v \leftarrow c, \quad u \leftarrow u + d \tag
 | $a$ | 0.03 ms⁻¹ | Recovery time-scale |
 | $b$ | -2.0 nS | Recovery sensitivity |
 | $c$ | -50 mV | After-spike reset of v |
-| $d$ | 100 pA | After-spike reset of u |
+| $d$ | 100 pA | After-spike reset of w |
 | $I_{ext}$ | 300 pA | External current |
 
 ---
@@ -51,11 +51,11 @@ Because $y_{n+1}$ appears on **both sides**, each step requires solving a **nonl
 
 ### 2.2 The Implicit System at Each Step
 
-Given the current state $(v_n, u_n)$, we seek $(v_{n+1}, u_{n+1})$ such that:
+Given the current state $(v_n, w_n)$, we seek $(v_{n+1}, u_{n+1})$ such that:
 
 $$G_1(v_{n+1}, u_{n+1}) = v_{n+1} - v_n - h \cdot f_v(v_{n+1}, u_{n+1}) = 0$$
 
-$$G_2(v_{n+1}, u_{n+1}) = u_{n+1} - u_n - h \cdot f_u(v_{n+1}, u_{n+1}) = 0$$
+$$G_2(v_{n+1}, u_{n+1}) = u_{n+1} - w_n - h \cdot f_u(v_{n+1}, u_{n+1}) = 0$$
 
 This 2×2 nonlinear system is solved at every step using `scipy.optimize.fsolve` with the **current state as the initial guess**.
 
@@ -84,11 +84,11 @@ The reset condition (equation 3) introduces a **hard discontinuity**. Attempting
 
 ```
 STEP i:
-  1. Solve G(v_next, u_next) = 0  using fsolve   ← root-finder sees NO jump
+  1. Solve G(v_next, w_next) = 0  using fsolve   ← root-finder sees NO jump
   2. CHECK:  if v_next >= v_peak:
                  v_next  <-  c
-                 u_next  <-  u_next + d
-  3. LOG (v_next, u_next) and advance state
+                 w_next  <-  w_next + d
+  3. LOG (v_next, w_next) and advance state
 ```
 
 By applying the reset **after** convergence and **before** logging, the discontinuity is never seen by `fsolve`. This is confirmed by **0 convergence failures** across all 10,001 steps including 6 spike events.
@@ -125,7 +125,7 @@ By applying the reset **after** convergence and **before** logging, the disconti
 Let:
 - $N$ = number of time steps = $(T_{end} - T_{start}) / h$
 - $K$ ≈ 7 = average `fsolve` iterations/step (constant for fixed problem size)
-- $D$ = 2 (state dimension: v and u)
+- $D$ = 2 (state dimension: v and w)
 
 | Operation | Cost per step | Total cost |
 |---|---|---|
@@ -148,23 +148,23 @@ Let:
 | Shape | `(N, 3)` |
 | Column 0 | Time (ms) — uniformly spaced by `dt` |
 | Column 1 | v (mV) — membrane potential |
-| Column 2 | u (pA) — recovery variable |
+| Column 2 | w (pA) — recovery variable |
 | Spike representation | Reset applied post-solve; no NaN; no gap |
 
 **Function signature:**
 
 ```python
 def solve_backward_euler(
-    y0=None,       # array-like shape (2,): [v0 (mV), u0 (pA)]
+    y0=None,       # array-like shape (2,): [v0 (mV), w0 (pA)]
     t_span=None,   # tuple (t_start, t_end) in ms
     dt=None,       # float, time step in ms
     I_ext=None,    # float, external current in pA
-) -> np.ndarray:   # shape (N, 3): [Time, v, u]
+) -> np.ndarray:   # shape (N, 3): [Time, v, w]
 ```
 
 **Sample output (first 3 rows, default params):**
 
-| Time (ms) | v (mV) | u (pA) |
+| Time (ms) | v (mV) | w (pA) |
 |---|---|---|
 | 0.00 | -60.00 | 0.00 |
 | 0.01 | -59.87 | 0.03 |
@@ -188,6 +188,6 @@ def solve_backward_euler(
 ## 8. References
 
 1. Izhikevich, E. M. (2007). *Dynamical Systems in Neuroscience: The Geometry of Excitability and Bursting*. MIT Press.
-2. Ascher, U. M., & Petzold, L. R. (1998). *Computer Methods for Ordinary Differential Equations and Differential-Algebraic Equations*. SIAM. — Chapter 4.
+2. Ascher, W. M., & Petzold, L. R. (1998). *Computer Methods for Ordinary Differential Equations and Differential-Algebraic Equations*. SIAM. — Chapter 4.
 3. Schiesser, W. E. (2014). *Differential Equation Analysis in Biomedical Science and Engineering*. Wiley.
 4. SciPy documentation: [`scipy.optimize.fsolve`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.fsolve.html).

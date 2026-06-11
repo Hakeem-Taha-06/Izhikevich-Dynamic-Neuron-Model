@@ -10,11 +10,11 @@ The Geometry of Excitability and Bursting*. MIT Press.
 
 Governing equations (2007 generalized biophysical form):
 
-    C_m * dv/dt = k*(v - v_r)*(v - v_t) - u + I_ext
-    du/dt       = a*{ b*(v - v_r) - u }
+    C_m * dv/dt = k*(v - v_r)*(v - v_t) - w + I_ext
+    dw/dt       = a*{ b*(v - v_r) - w }
 
 After-spike reset (discrete):
-    if v >= v_peak:  v <- c,  u <- u + d
+    if v >= v_peak:  v <- c,  w <- w + d
 
 WARNING TO ALL DEVELOPERS: The discrete reset condition (v >= v_peak)
 MUST be handled inside your numerical loops.  Do not attempt to
@@ -37,7 +37,7 @@ v_t = -40.0     # Instantaneous threshold potential (mV)
 a = 0.03        # Recovery time-scale (1/ms)
 b = -2.0        # Recovery sensitivity (nS)
 c = -50.0       # After-spike reset of v (mV)
-d = 100.0       # After-spike reset increment of u (pA)
+d = 100.0       # After-spike reset increment of w (pA)
 
 # --- Spike Detection ---
 v_peak = 35.0   # Spike cutoff / peak voltage (mV)
@@ -45,11 +45,11 @@ v_peak = 35.0   # Spike cutoff / peak voltage (mV)
 # ==========================================
 # 2. DEFAULT INITIAL CONDITIONS
 # ==========================================
-# [Membrane Potential v (mV), Recovery Variable u (pA)]
+# [Membrane Potential v (mV), Recovery Variable w (pA)]
 V_0 = -60.0
-U_0 = b * (V_0 - v_r)  # Steady-state formulation for 2007 model
+W_0 = b * (V_0 - v_r)  # Steady-state formulation for 2007 model
 
-INITIAL_STATE = np.array([V_0, U_0])
+INITIAL_STATE = np.array([V_0, W_0])
 
 # ==========================================
 # 3. SIMULATION SETTINGS
@@ -64,17 +64,17 @@ I_EXT_DEFAULT = 300.0
 # ==========================================
 # 4. SHARED ODE FUNCTIONS
 # ==========================================
-def dv_dt(v, u, I_ext):
+def dv_dt(v, w, I_ext):
     """Calculates the derivative of the membrane potential.
 
-    Implements:  dv/dt = [ k*(v - v_r)*(v - v_t) - u + I_ext ] / C_m
+    Implements:  dv/dt = [ k*(v - v_r)*(v - v_t) - w + I_ext ] / C_m
     """
-    return (k * (v - v_r) * (v - v_t) - u + I_ext) / C_m
+    return (k * (v - v_r) * (v - v_t) - w + I_ext) / C_m
 
 
-def du_dt(v, u):
+def dw_dt(v, w):
     """Calculates the derivative of the recovery variable.
 
-    Implements:  du/dt = a * { b*(v - v_r) - u }
+    Implements:  dw/dt = a * { b*(v - v_r) - w }
     """
-    return a * (b * (v - v_r) - u)
+    return a * (b * (v - v_r) - w)

@@ -9,9 +9,9 @@ during training by penalising violations of the continuous dynamics.
 Model Reference
 ---------------
 Izhikevich (2007) generalized biophysical model:
-    C_m * dv/dt = k*(v - v_r)*(v - v_t) - u + I_ext
-    du/dt       = a*{ b*(v - v_r) - u }
-    if v >= v_peak:  v <- c,  u <- u + d
+    C_m * dv/dt = k*(v - v_r)*(v - v_t) - w + I_ext
+    dw/dt       = a*{ b*(v - v_r) - w }
+    if v >= v_peak:  v <- c,  w <- w + d
 
 Spike Masking Strategy
 ----------------------
@@ -39,7 +39,7 @@ section at the bottom of this file.
 Strict output interface rule
 -----------------------------
 All numerical and ML predictive outputs must return ``numpy.ndarray``
-of shape ``(N, 3)`` ordered as ``[Time, v, u]``.
+of shape ``(N, 3)`` ordered as ``[Time, v, w]``.
 """
 
 import torch
@@ -57,33 +57,33 @@ from config import C_m, k, v_r, v_t, v_peak, a, b, c, d, I_EXT_DEFAULT
 #
 # DV_RATE: the voltage rate driven by external current alone at rest
 #          = I_EXT_DEFAULT / C_m = 300 / 100 = 3.0 mV/ms
-# DU_RATE: the recovery rate after a spike (u jumps by d, then decays)
+# DW_RATE: the recovery rate after a spike (w jumps by d, then decays)
 #          = a * |d| = 0.03 * 100 = 3.0 pA/ms
 DV_RATE = I_EXT_DEFAULT / C_m       # 3.0  mV/ms
-DU_RATE = a * abs(d)                # 3.0  pA/ms
+DW_RATE = a * abs(d)                # 3.0  pA/ms
 
 
 # =====================================================================
 # 1. PHYSICS LOSS
 # =====================================================================
 
-def compute_physics_loss(model, t, I_ext, V_0, U_0, peak_margin=10.0):
+def compute_physics_loss(model, t, I_ext, V_0, W_0, peak_margin=10.0):
     """Compute the physics-informed ODE-residual loss.
 
     Parameters
     ----------
     model : torch.nn.Module
         The neural network (Role 8).  Must accept a tensor of shape
-        ``(N, 4)`` ordered as ``[t, I_ext, V_0, U_0]`` and return a
-        tensor of shape ``(N, 2)`` ordered as ``[v_pred, u_pred]``.
+        ``(N, 4)`` ordered as ``[t, I_ext, V_0, W_0]`` and return a
+        tensor of shape ``(N, 2)`` ordered as ``[v_pred, w_pred]``.
     t : torch.Tensor, shape (N, 1), **requires_grad=True**
         Time collocation points (ms).  Gradient tracking is mandatory
-        so that ``torch.autograd.grad`` can compute dv/dt and du/dt.
+        so that ``torch.autograd.grad`` can compute dv/dt and dw/dt.
     I_ext : torch.Tensor, shape (N, 1)
         External current for each sample (pA).
     V_0 : torch.Tensor, shape (N, 1)
         Initial membrane potential for each sample (mV).
-    U_0 : torch.Tensor, shape (N, 1)
+    W_0 : torch.Tensor, shape (N, 1)
         Initial recovery variable for each sample (pA).
     peak_margin : float, optional
         How far below v_peak (mV) to start masking.  Points with
@@ -125,10 +125,10 @@ def compute_physics_loss(model, t, I_ext, V_0, U_0, peak_margin=10.0):
     the ODE is smooth and valid, crippling the physics enforcement.
     """
     # ── Step 1: Forward pass ──────────────────────────────────────────
-    inputs = torch.cat([t, I_ext, V_0, U_0], dim=1)      # (N, 4)
+    inputs = torch.cat([t, I_ext, V_0, W_0], dim=1)      # (N, 4)
     outputs = model(inputs)                                 # (N, 2)
     v_pred = outputs[:, 0:1]                                # (N, 1)
-    u_pred = outputs[:, 1:2]                                # (N, 1)
+    w_pred = outputs[:, 1:2]                                # (N, 1)
 
     # ── Step 2: Time derivatives via autograd ─────────────────────────
     dv_dt = torch.autograd.grad(
@@ -139,23 +139,23 @@ def compute_physics_loss(model, t, I_ext, V_0, U_0, peak_margin=10.0):
         retain_graph=True,
     )[0]  # (N, 1)
 
-    du_dt = torch.autograd.grad(
-        outputs=u_pred,
+    dw_dt = torch.autograd.grad(
+        outputs=w_pred,
         inputs=t,
-        grad_outputs=torch.ones_like(u_pred),
+        grad_outputs=torch.ones_like(w_pred),
         create_graph=True,
         retain_graph=True,
     )[0]  # (N, 1)
 
     # ── Step 3: ODE right-hand sides ──────────────────────────────────
-    #   dv/dt = [k*(v - v_r)*(v - v_t) - u + I_ext] / C_m
-    #   du/dt = a * [b*(v - v_r) - u]
-    rhs_v = (k * (v_pred - v_r) * (v_pred - v_t) - u_pred + I_ext) / C_m
-    rhs_u = a * (b * (v_pred - v_r) - u_pred)
+    #   dv/dt = [k*(v - v_r)*(v - v_t) - w + I_ext] / C_m
+    #   dw/dt = a * [b*(v - v_r) - w]
+    rhs_v = (k * (v_pred - v_r) * (v_pred - v_t) - w_pred + I_ext) / C_m
+    rhs_u = a * (b * (v_pred - v_r) - w_pred)
 
     # ── Step 4: Residuals ─────────────────────────────────────────────
     R_v = dv_dt - rhs_v
-    R_u = du_dt - rhs_u
+    R_w = dw_dt - rhs_u
 
     # ── Step 5: Peak-only spike masking ───────────────────────────────
     # Mask the fast-upstroke zone where dv/dt exceeds ~34-49 mV/ms
@@ -172,7 +172,7 @@ def compute_physics_loss(model, t, I_ext, V_0, U_0, peak_margin=10.0):
     valid = ~(v_pred > (v_peak - peak_margin)).squeeze()    # True → keep
 
     R_v_valid = R_v[valid]
-    R_u_valid = R_u[valid]
+    R_w_valid = R_w[valid]
 
     # ── Step 6: Normalise and compute mean squared residual ───────────
     # Divide each residual by its characteristic ODE rate so that both
@@ -186,7 +186,7 @@ def compute_physics_loss(model, t, I_ext, V_0, U_0, peak_margin=10.0):
     else:
         loss_physics = (
             torch.mean((R_v_valid / DV_RATE) ** 2)
-            + torch.mean((R_u_valid / DU_RATE) ** 2)
+            + torch.mean((R_w_valid / DW_RATE) ** 2)
         )
 
     return loss_physics
@@ -196,11 +196,11 @@ def compute_physics_loss(model, t, I_ext, V_0, U_0, peak_margin=10.0):
 # 2. INITIAL-CONDITION LOSS (optional helper)
 # =====================================================================
 
-def compute_ic_loss(model, I_ext_0, V_0, U_0):
+def compute_ic_loss(model, I_ext_0, V_0, W_0):
     """Compute the initial-condition loss at t = 0.
 
     Penalises the network if its prediction at t = 0 does not match
-    the prescribed initial state (V_0, U_0).
+    the prescribed initial state (V_0, W_0).
 
     Parameters
     ----------
@@ -210,7 +210,7 @@ def compute_ic_loss(model, I_ext_0, V_0, U_0):
         External current for each sample (pA).
     V_0 : torch.Tensor, shape (N, 1)
         Target initial membrane potential (mV).
-    U_0 : torch.Tensor, shape (N, 1)
+    W_0 : torch.Tensor, shape (N, 1)
         Target initial recovery variable (pA).
 
     Returns
@@ -222,19 +222,19 @@ def compute_ic_loss(model, I_ext_0, V_0, U_0):
     """
     # Characteristic scales for normalisation:
     #   v spans roughly v_r to v_peak  →  95 mV
-    #   u jumps by d at each spike     →  100 pA
+    #   w jumps by d at each spike     →  100 pA
     V_SCALE = v_peak - v_r          # 35 - (-60) = 95.0 mV
-    U_SCALE = abs(d)                # 100.0 pA
+    W_SCALE = abs(d)                # 100.0 pA
 
     t_zero = torch.zeros_like(V_0, requires_grad=False)
-    inputs = torch.cat([t_zero, I_ext_0, V_0, U_0], dim=1)
+    inputs = torch.cat([t_zero, I_ext_0, V_0, W_0], dim=1)
     outputs = model(inputs)
     v_pred_0 = outputs[:, 0:1]
-    u_pred_0 = outputs[:, 1:2]
+    w_pred_0 = outputs[:, 1:2]
 
     loss_ic = (
         torch.mean(((v_pred_0 - V_0) / V_SCALE) ** 2)
-        + torch.mean(((u_pred_0 - U_0) / U_SCALE) ** 2)
+        + torch.mean(((w_pred_0 - W_0) / W_SCALE) ** 2)
     )
     return loss_ic
 
@@ -321,21 +321,21 @@ def get_margin(epoch, max_epochs, start=20.0, end=5.0):
 #
 #   for epoch in range(max_epochs):
 #       for batch in dataloader:
-#           t, I_ext, V_0, U_0, v_gt, u_gt = unpack(batch)
+#           t, I_ext, V_0, W_0, v_gt, w_gt = unpack(batch)
 #           t.requires_grad_(True)                      # ← mandatory
 #
 #           # 1. Data loss (yours to define)
-#           outputs = model(torch.cat([t, I_ext, V_0, U_0], dim=1))
+#           outputs = model(torch.cat([t, I_ext, V_0, W_0], dim=1))
 #           loss_data = mse(outputs, targets)
 #
 #           # 2. Physics loss with curriculum margin
 #           margin = get_margin(epoch, max_epochs)
 #           loss_phys = compute_physics_loss(
-#               model, t, I_ext, V_0, U_0, peak_margin=margin
+#               model, t, I_ext, V_0, W_0, peak_margin=margin
 #           )
 #
 #           # 3. IC loss (optional, anchors trajectory to t=0)
-#           loss_ic = compute_ic_loss(model, I_ext, V_0, U_0)
+#           loss_ic = compute_ic_loss(model, I_ext, V_0, W_0)
 #
 #           # 4. Combine with your chosen weights
 #           loss_total = (

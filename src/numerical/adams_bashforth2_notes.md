@@ -6,7 +6,7 @@ The **Adams-Bashforth 2 (AB2)** method is a linear multi-step method used for so
 
 The most critical challenge in applying AB2 to the Izhikevich model is the **Discrete Reset Condition**. Since the model incorporates a discontinuous jump when the membrane potential $v$ reaches $v_{peak}$, the multi-step "history" becomes mathematically invalid at the moment of a spike. To address this, the implementation follows a **History Flush Logic**:
 
-- When $v \geq v_{peak}$, the state variables are immediately reset to $v = c$ and $u = u + d$.
+- When $v \geq v_{peak}$, the state variables are immediately reset to $v = c$ and $w = w + d$.
 - Following the reset, the solver executes a single **Forward Euler step** to restart the integration process and generate a new valid history point.
 - Once the history is re-established, the solver resumes the second-order AB2 integration.
 
@@ -27,7 +27,7 @@ The following table summarizes the performance of the AB2 solver across differen
 The time complexity is linearly proportional to the number of simulation steps $N$, where $N = (T_{end} - T_{start}) / dt$. Unlike implicit methods (e.g., Backward Euler), AB2 does not require internal root-finding iterations, making it computationally efficient per time step.
 
 ### Space Complexity: $O(N)$
-The space complexity is $O(N \times D)$, where $D$ represents the dimensions of the state vector. The primary memory consumption stems from storing the simulation results (Time, $v$, $u$) for all $N$ steps.
+The space complexity is $O(N \times D)$, where $D$ represents the dimensions of the state vector. The primary memory consumption stems from storing the simulation results (Time, $v$, $w$) for all $N$ steps.
 
 ## 4. Observations and Conclusions
 

@@ -9,17 +9,17 @@
 
 **Governing Equations (2007 Generalized Biophysical Form):**
 
-$$C_m \frac{dv}{dt} = k(v - v_r)(v - v_t) - u + I_{ext}$$
+$$C_m \frac{dv}{dt} = k(v - v_r)(v - v_t) - w + I_{ext}$$
 
-$$\frac{du}{dt} = a\{ b(v - v_r) - u \}$$
+$$\frac{dw}{dt} = a\{ b(v - v_r) - w \}$$
 
-**Master Interface Rule:** ALL numerical methods and AI models must output their simulation results as a NumPy array of shape `(N, 3)`, specifically ordered as `[Time, v, u]`. 
+**Master Interface Rule:** ALL numerical methods and AI models must output their simulation results as a NumPy array of shape `(N, 3)`, specifically ordered as `[Time, v, w]`. 
 
 ---
 
 ### ⚠️ THE GLOBAL CONSTRAINT: THE DISCRETE RESET ⚠️
 The Izhikevich model is NOT a continuous curve. All coders (except Role 4) must manually write logic inside their loops to handle the voltage spike:
-**If $v \ge v_{peak}$, then immediately set $v \leftarrow c$ and $u \leftarrow u + d$.**
+**If $v \ge v_{peak}$, then immediately set $v \leftarrow c$ and $w \leftarrow w + d$.**
 
 ---
 
@@ -62,7 +62,7 @@ The Izhikevich model is NOT a continuous curve. All coders (except Role 4) must 
 * **Deliverable:** `/data/ground_truth.csv`
 
 **1. The Engineering Trap: The Discrete Reset**
-The Izhikevich model dictates that when the membrane potential ($v$) hits $v_{peak}$, it instantly resets to $c$, and the recovery variable ($u$) jumps by $d$. 
+The Izhikevich model dictates that when the membrane potential ($v$) hits $v_{peak}$, it instantly resets to $c$, and the recovery variable ($w$) jumps by $d$. 
 * **The Problem:** Continuous industrial solvers (like `solve_ivp`) do not understand teleportation. If you just run the solver for 100ms, it will mathematically overshoot the $v_{peak}$ threshold, ruining the spike timing and corrupting the dataset.
 * **Your Required Architecture:** You must implement **Segmented Integration**. You are required to use an event tracker built into your solver to detect the exact microsecond $v$ reaches $v_{peak}$. When that event triggers, you must command the solver to completely halt. You will then manually apply the mathematical reset to the state variables, log the discrete jump in your data arrays, and initialize a *new* solver run from that exact timestamp to continue the simulation until you reach the 100ms target. 
 * **Solver Constraints:** Because this is a stiff differential system, you are required to use a stiff solver method (e.g., `Radau` or `LSODA`). Set your relative tolerance to $10^{-6}$ and absolute tolerance to $10^{-9}$.
@@ -71,13 +71,13 @@ The Izhikevich model dictates that when the membrane potential ($v$) hits $v_{pe
 A neural network needs diverse data to learn the underlying physics. You must construct a nested loop system to simulate the neuron under varying conditions. Your grid must sweep through:
 * **Current ($I_{ext}$):** From 0.0 to 500.0 pA in steps of 12.5 (40 variations).
 * **Initial Voltage ($V_0$):** From -85.0 mV to -45.0 mV in steps of 2.0 (20 variations).
-* **Initial Recovery ($U_0$):** Use an array of 5 variations around the steady state (e.g., based on $b \cdot (V_0 - v_r)$).
+* **Initial Recovery ($W_0$):** Use an array of 5 variations around the steady state (e.g., based on $b \cdot (V_0 - v_r)$).
 * **Target:** Exactly 4,000 distinct simulation runs.
 
 **3. The Output Schema**
 Your final output must be exported via Pandas to `/data/ground_truth.csv`. The time step must be strictly interpolated to `0.01` ms. The CSV must perfectly match this structure:
 
-| Sim_ID | Time (ms) | I_ext (pA) | v (mV) | u (pA) |
+| Sim_ID | Time (ms) | I_ext (pA) | v (mV) | w (pA) |
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | 0.00 | 250.0 | -60.000 | 0.000 |
 | 1 | 0.01 | 250.0 | -59.821 | 0.002 |
@@ -121,7 +121,7 @@ Your final output must be exported via Pandas to `/data/ground_truth.csv`. The t
 * **Objective:** Build the PyTorch Neural Network skeleton.
 * **Inputs:** Expected data shape.
 * **Actionable Tasks:**
-    1. Design an `nn.Module` that accepts `[Time, I_ext, V_0, U_0]` as inputs and outputs `[v, u]`.
+    1. Design an `nn.Module` that accepts `[Time, I_ext, V_0, W_0]` as inputs and outputs `[v, w]`.
     2. Select differentiable activation functions (e.g., Tanh or SiLU).
 * **Deliverable:** `/src/ml_model/architecture.py`.
 
@@ -129,7 +129,7 @@ Your final output must be exported via Pandas to `/data/ground_truth.csv`. The t
 * **Objective:** Force the AI to obey physics.
 * **Inputs:** ODEs from `config.py` and Architecture from Role 8.
 * **Actionable Tasks:**
-    1. Write the Autograd logic to calculate gradients of $v$ and $u$ with respect to Time.
+    1. Write the Autograd logic to calculate gradients of $v$ and $w$ with respect to Time.
     2. **Crucial Trap:** The jump at $v = v_{peak}$ will cause infinite gradients and crash the training. You must design a workaround (e.g., masking the loss exactly at the spike, or using piecewise continuous training). This is the hardest task on the team.
 * **Deliverable:** `/src/ml_model/physics_loss.py`.
 
@@ -151,5 +151,5 @@ Your final output must be exported via Pandas to `/data/ground_truth.csv`. The t
 * **Inputs:** Output arrays from Roles 4, 5, 6, 7, and 10.
 * **Actionable Tasks:**
     1. **Efficiency Analysis:** Calculate the RMSE against the Ground Truth and log the execution time (Wall-Clock) for every method. Format this into a master table.
-    2. **Biological Pattern Testing:** Change the $C_m, k, v_r, v_t, v_{peak}, a, b, c, d$ parameters in `config.py` to trigger different states (e.g., Regular Spiking vs. Chattering). Rerun all solvers. Generate Phase Portraits (plotting $v$ vs $u$) and Time-Series graphs (Time vs $v$) to prove the methods adapted correctly.
+    2. **Biological Pattern Testing:** Change the $C_m, k, v_r, v_t, v_{peak}, a, b, c, d$ parameters in `config.py` to trigger different states (e.g., Regular Spiking vs. Chattering). Rerun all solvers. Generate Phase Portraits (plotting $v$ vs $w$) and Time-Series graphs (Time vs $v$) to prove the methods adapted correctly.
 * **Deliverable:** `/src/evaluation/evaluator.py`, `eval_notes.md`, and all PNG/PDF graphs saved to `/outputs/figures/`.
