@@ -158,7 +158,7 @@ if __name__ == "__main__":
         output = execute_ml_training_pipeline(
             ground_truth_csv_path=mock_csv,
             model_save_path="outputs/models/pinn_model.pt",
-            epochs=1000,
+            epochs=5000,
             lr=0.001
         )
         print("\n🟢 SUCCESS! Training Loop executed cleanly.")
