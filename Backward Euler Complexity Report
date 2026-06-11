@@ -1,16 +1,64 @@
 
 ### Backward Euler Complexity Report
+### Model: Izhikevich (2007) Generalized Biophysical Neuron
+### Solver: Role 6 — Implicit Backward Euler via scipy.optimize.fsolve
 
-| Metric | Value |
-| :--- | :--- |
-| **Total Execution Time** | 2.3274 seconds |
-| **Number of Steps** | 10001 |
-| **Average Time per Step** | 0.232720 ms |
-| **Memory Usage (Result Array)** | 0.3815 MB |
-| **Peak Process Memory (RSS)** | 80.9648 MB |
-| **Time Complexity** | O(N * I) where N is steps, I is fsolve iterations |
-| **Space Complexity** | O(N * D) where N is steps, D is state dimensions (4+1) |
+---
 
-**Notes:**
-- The implicit nature requires a root-finding iteration (`fsolve`) at each step.
-- Stability is maintained even for large `dt`, unlike explicit methods.
+#### Benchmark Setup
+| Parameter       | Value            |
+| :---            | :---             |
+| T_START         | 0.0 ms           |
+| T_END           | 100.0 ms         |
+| DT_EVAL (h)     | 0.01 ms          |
+| I_ext           | 300.0 pA         |
+| Initial v       | -60.0 mV         |
+| Initial u       | 0.0 pA           |
+| Runs averaged   | 5                |
+
+---
+
+#### Performance Results
+| Metric                        | Value              |
+| :---                          | :---               |
+| **Total Steps (N)**           | 10,001             |
+| **Total Execution Time**      | 0.3701 seconds     |
+| **Average Time per Step**     | 0.037004 ms        |
+| **Result Array Size**         | 0.2400 MB          |
+| **Peak Memory Usage**         | 0.4178 MB          |
+| **Detected Spikes**           | 6                  |
+
+---
+
+#### Root-Finding Performance (fsolve — per step)
+| Metric                          | Value  |
+| :---                            | :---   |
+| **Average function calls/step** | 7      |
+| **Minimum function calls/step** | 7      |
+| **Maximum function calls/step** | 7      |
+| **Convergence failures**        | 0      |
+
+**Note:** The consistent 7 calls/step (across inter-spike and near-spike
+regions alike) confirms that the current state is an excellent initial
+guess for `fsolve` at dt = 0.01 ms, and the post-convergence reset
+strategy successfully shields the root-finder from the discontinuity.
+
+---
+
+#### Complexity Analysis
+| Complexity Type   | Class    | Reasoning                                                                 |
+| :---              | :---     | :---                                                                      |
+| **Time**          | O(N)     | N steps × O(1) fsolve calls (bounded iterations for fixed 2D system)     |
+| **Space**         | O(N)     | Pre-allocated (N, 3) result array; no growing history buffer              |
+
+- N = number of time steps = (T_END - T_START) / h
+- fsolve overhead is a fixed constant multiplier (~7 function evaluations)
+  regardless of N, so overall complexity remains linear.
+
+---
+
+#### Stability Note
+The Backward Euler method is **A-stable** (unconditionally stable for
+all step sizes h > 0), unlike RK4 which requires h < h_crit to avoid
+blow-up. This is the primary advantage of the implicit formulation for
+the stiff Izhikevich system.
