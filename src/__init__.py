@@ -1,3 +1,0 @@
-"""
-Source directory initialization.
-"""

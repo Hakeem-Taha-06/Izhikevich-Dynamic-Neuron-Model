@@ -1,8 +1,8 @@
-"""Role 1: Master Execution Script
+"""Role 6: Backward Euler Solver Workspace
 
 Purpose
 -------
-Define the top-level execution contract for the Izhikevich spiking neuron project.
+Reserve this module for the implicit Backward Euler solver documentation and interface contract.
 
 Model Reference
 ---------------
@@ -23,9 +23,9 @@ Required `config.py` imports
 
 Must achieve
 ------------
-- Coordinate the project entry point.
-- Reference the numerical, ML, and evaluation stages.
-- Preserve the shared output contract for every stage.
+- Describe the implicit solver's role in the Izhikevich project.
+- Preserve the baseline-compatible output contract.
+- Support the solver-comparison and evaluation pipeline.
 
 Strict output interface rule
 -----------------------------
@@ -34,5 +34,6 @@ All numerical and ML predictive outputs must return `numpy.ndarray` of shape `(N
 Constraints
 -----------
 - No implementation code.
-- No orchestration logic.
-- No imports beyond documentation-only placeholders in this scaffold."""
+- No loops.
+- No equation-solving logic.
+- Documentation-only scaffold."""

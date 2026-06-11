@@ -235,8 +235,7 @@ __marimo__/
 # ==============================================================================
 # Project Generated Outputs
 # ==============================================================================
-# Ignore generated data CSVs, but keep the directory using .gitkeep
-data/*.csv
+# Ignore generated data, but keep the directory using .gitkeep
 !data/.gitkeep
 
 # Ignore generated figures, but keep the directory and its README
@@ -252,3 +251,7 @@ outputs/models/*.pt
 outputs/models/*.pth
 !outputs/models/.gitkeep
 !outputs/models/MODELS_README.md
+
+
+# ignore all pdf files
+*.pdf
