@@ -48,23 +48,9 @@ from config import (
     INITIAL_STATE,
     T_START, T_END, DT_EVAL,
     I_EXT_DEFAULT,
-    C_m, k, v_r, v_t, v_peak,
-    a, b, c, d,
+    v_peak, c, d,
+    dv_dt, du_dt,
 )
-
-
-# ---------------------------------------------------------------------------
-# ODE right-hand sides (local — keeps the solver self-contained)
-# ---------------------------------------------------------------------------
-
-def _f_v(v_val, u_val, I_ext):
-    """dv/dt — equation (1)."""
-    return (k * (v_val - v_r) * (v_val - v_t) - u_val + I_ext) / C_m
-
-
-def _f_u(v_val, u_val):
-    """du/dt — equation (2)."""
-    return a * (b * (v_val - v_r) - u_val)
 
 
 # ---------------------------------------------------------------------------
@@ -76,8 +62,8 @@ def solve_backward_euler(y0=None, t_span=None, dt=None, I_ext=None):
 
     At every time step the implicit system
 
-        v_{n+1} = v_n + dt * f_v(v_{n+1}, u_{n+1})
-        u_{n+1} = u_n + dt * f_u(v_{n+1}, u_{n+1})
+        v_{n+1} = v_n + dt * dv_dt(v_{n+1}, u_{n+1}, I_ext)
+        u_{n+1} = u_n + dt * du_dt(v_{n+1}, u_{n+1})
 
     is solved for (v_{n+1}, u_{n+1}) using scipy.optimize.fsolve.
     The current state (v_n, u_n) is used as the initial guess.
@@ -135,23 +121,20 @@ def solve_backward_euler(y0=None, t_span=None, dt=None, I_ext=None):
     v_curr = float(y0[0])
     u_curr = float(y0[1])
 
-    # Tracking for performance report
     total_calls = 0
 
     # ── 4. Main implicit integration loop ────────────────────────────────
     for i in range(1, N):
 
-        # Capture current state for closure (avoids late-binding bug)
         vc, uc = v_curr, u_curr
 
         def _residual(y_next):
-            """G(y_next) = 0  ⟺  implicit BE equations."""
+            """G(y_next) = 0  <=>  implicit BE equations."""
             v_n, u_n = y_next
-            res_v = v_n - vc - dt * _f_v(v_n, u_n, I_ext)
-            res_u = u_n - uc - dt * _f_u(v_n, u_n)
+            res_v = v_n - vc - dt * dv_dt(v_n, u_n, I_ext)
+            res_u = u_n - uc - dt * du_dt(v_n, u_n)
             return np.array([res_v, res_u])
 
-        # fsolve with current state as initial guess
         y_next, info, ier, _ = fsolve(
             _residual,
             x0=np.array([v_curr, u_curr]),
@@ -162,12 +145,10 @@ def solve_backward_euler(y0=None, t_span=None, dt=None, I_ext=None):
         v_next, u_next = y_next[0], y_next[1]
 
         # ── Discrete reset AFTER convergence, BEFORE logging ─────────────
-        # fsolve never sees the discontinuity → guaranteed convergence
         if v_next >= v_peak:
-            v_next = c           # reset membrane potential  (mV)
-            u_next = u_next + d  # increment recovery variable (pA)
+            v_next = c
+            u_next = u_next + d
 
-        # ── Log and advance ───────────────────────────────────────────────
         results[i, 0] = t_values[i]
         results[i, 1] = v_next
         results[i, 2] = u_next
@@ -175,7 +156,6 @@ def solve_backward_euler(y0=None, t_span=None, dt=None, I_ext=None):
         v_curr = v_next
         u_curr = u_next
 
-    # Store performance info as function attribute for notes/reporting
     solve_backward_euler.last_total_fsolve_calls = total_calls
     solve_backward_euler.last_N_steps = N
 
@@ -193,7 +173,6 @@ if __name__ == '__main__':
     print("Model: Izhikevich (2007) — Regular Spiking")
     print("=" * 60)
 
-    # ── Run and time ──────────────────────────────────────────────────────
     N_RUNS = 5
     times = []
     for _ in range(N_RUNS):
@@ -206,7 +185,6 @@ if __name__ == '__main__':
     calls    = solve_backward_euler.last_total_fsolve_calls
     spikes   = len(np.where(np.diff(res[:, 1]) < -50)[0])
 
-    # ── Output shape ──────────────────────────────────────────────────────
     print(f"\nOutput shape  : {res.shape}   (expected (N, 3))")
     print(f"Time range    : {res[0,0]:.2f} ms  ->  {res[-1,0]:.2f} ms")
     print(f"v  range      : {res[:,1].min():.2f}  to  {res[:,1].max():.2f} mV")
@@ -215,10 +193,7 @@ if __name__ == '__main__':
 
     print(f"\nFirst 5 rows  [Time | v | u]:")
     print(res[:5])
-    print(f"\nLast  5 rows  [Time | v | u]:")
-    print(res[-5:])
 
-    # ── Performance report ────────────────────────────────────────────────
     mem_mb = res.nbytes / 1024 / 1024
     avg_calls_per_step = calls / N if N > 0 else 0
 
