@@ -59,7 +59,7 @@ T_END = 100.0
 DT_EVAL = 0.01    # Required resolution for the Ground Truth dataset
 
 # Default External Current (pA)
-I_EXT_DEFAULT = 500.0
+I_EXT_DEFAULT = 300.0  
 
 # ==========================================
 # 4. SHARED ODE FUNCTIONS
