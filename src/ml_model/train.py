@@ -66,8 +66,20 @@ def execute_ml_training_pipeline(
     except FileNotFoundError:
         raise FileNotFoundError(f"Missing ground truth data file at: {ground_truth_csv_path}")
 
-    v_target = torch.tensor(df['v'].values, dtype=torch.float32).view(-1, 1)
-    u_target = torch.tensor(df['u'].values, dtype=torch.float32).view(-1, 1)
+    # Support both CSV formats:
+    #   Old single-sim: columns ['time', 'v', 'u']
+    #   New multi-sim:  columns ['Sim_ID', 'Time (ms)', 'I_ext (pA)', 'v (mV)', 'u (pA)']
+    if 'v (mV)' in df.columns:
+        # New multi-sim format — use first simulation only for training
+        sim1 = df[df['Sim_ID'] == 1] if 'Sim_ID' in df.columns else df
+        v_col, u_col = 'v (mV)', 'u (pA)'
+        sim1 = sim1.reset_index(drop=True)
+        v_target = torch.tensor(sim1[v_col].values, dtype=torch.float32).view(-1, 1)
+        u_target = torch.tensor(sim1[u_col].values, dtype=torch.float32).view(-1, 1)
+    else:
+        # Old single-sim format
+        v_target = torch.tensor(df['v'].values, dtype=torch.float32).view(-1, 1)
+        u_target = torch.tensor(df['u'].values, dtype=torch.float32).view(-1, 1)
     targets = torch.cat((v_target, u_target), dim=1)
 
     # ---- 3. Build the 4-Column Model Inputs ----
@@ -167,3 +179,21 @@ if __name__ == "__main__":
     finally:
         if os.path.exists(mock_csv):
             os.remove(mock_csv)
+
+
+def run_training(gt_csv_path=None):
+    """Entry point called by main.py (Role 1)."""
+    import sys
+    from pathlib import Path
+    if gt_csv_path is None:
+        root = Path(__file__).resolve().parents[2]
+        gt_csv_path = str(root / 'data' / 'ground_truth.csv')
+    model_save = str(Path(__file__).resolve().parents[2] / 'outputs' / 'models' / 'pinn_model.pt')
+    result = execute_ml_training_pipeline(
+        ground_truth_csv_path=str(gt_csv_path),
+        model_save_path=model_save,
+        epochs=5000,
+        lr=0.001,
+    )
+    print(f"Training complete. Output shape: {result.shape}")
+    return result
