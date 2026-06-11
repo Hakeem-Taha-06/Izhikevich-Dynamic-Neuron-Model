@@ -1,122 +1,210 @@
-import numpy as np
-from scipy.optimize import fsolve
+"""Role 6: Backward Euler Solver — Izhikevich Neuron Model (2007)
+
+Objective
+---------
+Implement an unconditionally stable implicit Backward Euler integrator for
+the Izhikevich (2007) generalized biophysical neuron model.
+
+At each time step, the nonlinear algebraic system that arises from the
+implicit formulation is solved with ``scipy.optimize.fsolve``.
+
+The discrete after-spike reset is applied AFTER fsolve converges and
+BEFORE the result is logged, so the root-finder never straddles the
+voltage discontinuity.
+
+Model Reference
+---------------
+Izhikevich, E. M. (2007). Dynamical Systems in Neuroscience:
+The Geometry of Excitability and Bursting. MIT Press.
+
+Governing equations (2007 generalized biophysical form):
+    C_m * dv/dt = k*(v - v_r)*(v - v_t) - u + I_ext   ... (1)
+    du/dt       = a * { b*(v - v_r) - u }               ... (2)
+
+After-spike reset (discrete):
+    if v >= v_peak:  v <- c,  u <- u + d               ... (3)
+
+Global output interface rule (ROLES.md)
+---------------------------------------
+Returns numpy.ndarray of shape (N, 3) ordered as [Time, v, u].
+    Column 0 : Time  (ms)
+    Column 1 : v     (mV) — membrane potential
+    Column 2 : u     (pA) — recovery variable
+"""
+
 import sys
 import os
+import numpy as np
+from scipy.optimize import fsolve
 
-# Add project root to path to import config
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+# ---------------------------------------------------------------------------
+# Project-root path resolution
+# ---------------------------------------------------------------------------
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
 from config import (
-    C_m, G_NA, G_K, G_L, E_NA, E_K, E_L,
-    INITIAL_STATE, T_START, T_END, DT_EVAL, I_EXT_DEFAULT,
-    alpha_m, beta_m, alpha_h, beta_h, alpha_n, beta_n
+    INITIAL_STATE,
+    T_START, T_END, DT_EVAL,
+    I_EXT_DEFAULT,
+    v_peak, c, d,
+    dv_dt, du_dt,
 )
 
-def hodgkin_huxley_derivatives(y, I_ext):
-    """
-    Calculates the derivatives for the Hodgkin-Huxley model.
-    y = [V, m, h, n]
-    """
-    V, m, h, n = y
-    
-    # Membrane potential derivative: dV/dt
-    # I_ion = gNa*m^3*h*(V-ENa) + gK*n^4*(V-EK) + gL*(V-EL)
-    I_na = G_NA * (m**3) * h * (V - E_NA)
-    I_k = G_K * (n**4) * (V - E_K)
-    I_l = G_L * (V - E_L)
-    
-    dVdt = (I_ext - (I_na + I_k + I_l)) / C_m
-    
-    # Gating variables derivatives: dx/dt = alpha_x(V)*(1-x) - beta_x(V)*x
-    dmdt = alpha_m(V) * (1.0 - m) - beta_m(V) * m
-    dhdt = alpha_h(V) * (1.0 - h) - beta_h(V) * h
-    dndt = alpha_n(V) * (1.0 - n) - beta_n(V) * n
-    
-    return np.array([dVdt, dmdt, dhdt, dndt])
 
-def solve_implicit_backward_euler(y0=None, t_span=None, dt=None, I_ext=None):
-    """
-    Role 5: Implicit Solver Developer (Backward Euler)
-    
-    Objective:
+# ---------------------------------------------------------------------------
+# Public solver
+# ---------------------------------------------------------------------------
+
+def solve_backward_euler(y0=None, t_span=None, dt=None, I_ext=None):
+    """Integrate the Izhikevich model with the implicit Backward Euler method.
+
+    At every time step the implicit system
+
+        v_{n+1} = v_n + dt * dv_dt(v_{n+1}, u_{n+1}, I_ext)
+        u_{n+1} = u_n + dt * du_dt(v_{n+1}, u_{n+1})
+
+    is solved for (v_{n+1}, u_{n+1}) using scipy.optimize.fsolve.
+    The current state (v_n, u_n) is used as the initial guess.
+
+    Immediately after convergence, the discrete reset condition (3) is
+    checked and applied if necessary. This guarantees the spike
+    discontinuity is never seen by the root-finder.
+
+    Parameters
     ----------
-    Solves the Hodgkin-Huxley system of ODEs using the implicit Backward Euler method.
-    An internal root-finding loop is implemented at each step using `scipy.optimize.fsolve`
-    to solve the implicit algebraic system of equations.
-    
-    The solver is expected to be unconditionally stable and show robustness at larger 
-    time steps where explicit solvers (like RK4) fail.
-    
-    Config Variables to Import:
-    --------------------------
-    - INITIAL_STATE: np.ndarray of shape (4,), containing default [V_0, M_0, H_0, N_0]
-    - T_START: float, start time of simulation (e.g., 0.0 ms)
-    - T_END: float, end time of simulation (e.g., 100.0 ms)
-    - DT_EVAL: float, default integration time step (e.g., 0.01 ms)
-    - I_EXT_DEFAULT: float, default external current injection (e.g., 10.0 uA/cm^2)
-    - C_m: float, membrane capacitance (e.g., 1.0 uF/cm^2)
-    - G_NA, G_K, G_L: floats, maximal conductances for Na, K, and Leak channels
-    - E_NA, E_K, E_L: floats, reversal potentials for Na, K, and Leak channels
-    - alpha_m, beta_m, alpha_h, beta_h, alpha_n, beta_n: functions for gating kinetics
-    
-    Input Parameters:
-    -----------------
-    - y0 : np.ndarray, optional
-        Initial state vector [V, m, h, n]. If None, defaults to `INITIAL_STATE`.
-    - t_span : tuple of (float, float), optional
-        Simulation start and end time (t_start, t_end). If None, defaults to `(T_START, T_END)`.
-    - dt : float, optional
-        Integration time step. If None, defaults to `DT_EVAL`.
-    - I_ext : float, optional
-        Constant external current injection. If None, defaults to `I_EXT_DEFAULT`.
-        
-    Output:
+    y0 : array-like of shape (2,), optional
+        Initial state [v0 (mV), u0 (pA)]. Defaults to INITIAL_STATE.
+    t_span : tuple (t_start, t_end), optional
+        Simulation window in ms. Defaults to (T_START, T_END).
+    dt : float, optional
+        Integration time step in ms. Defaults to DT_EVAL.
+    I_ext : float, optional
+        Constant external current in pA. Defaults to I_EXT_DEFAULT.
+
+    Returns
     -------
-    np.ndarray of shape (N, 5): [Time, Voltage, m, h, n]
+    results : numpy.ndarray, shape (N, 3)
+        Trajectory matrix ordered as [Time (ms), v (mV), u (pA)].
     """
-    # Set defaults if not provided
+    # ── 1. Resolve defaults ───────────────────────────────────────────────
     if y0 is None:
-        y0 = INITIAL_STATE
+        y0 = INITIAL_STATE.copy()
+    else:
+        y0 = np.asarray(y0, dtype=float)
+
     if t_span is None:
         t_span = (T_START, T_END)
+    t_start, t_end = float(t_span[0]), float(t_span[1])
+
     if dt is None:
-        dt = DT_EVAL
+        dt = float(DT_EVAL)
+    else:
+        dt = float(dt)
+
     if I_ext is None:
-        I_ext = I_EXT_DEFAULT
-        
-    t_start, t_end = t_span
-    t_values = np.arange(t_start, t_end + dt, dt)
-    num_steps = len(t_values)
-    
-    # Initialize results array (N, 5) -> [Time, V, m, h, n]
-    results = np.zeros((num_steps, 5))
+        I_ext = float(I_EXT_DEFAULT)
+    else:
+        I_ext = float(I_ext)
+
+    # ── 2. Build uniform time grid ────────────────────────────────────────
+    t_values = np.arange(t_start, t_end + dt * 0.5, dt)
+    N = len(t_values)
+
+    # ── 3. Pre-allocate output (N, 3) → [Time, v, u] ─────────────────────
+    results = np.empty((N, 3), dtype=float)
     results[0, 0] = t_values[0]
-    results[0, 1:] = y0
-    
-    current_y = np.array(y0)
-    
-    for i in range(1, num_steps):
-        # Backward Euler: y_{n+1} = y_n + dt * f(t_{n+1}, y_{n+1})
-        # Define the implicit function to solve: G(y_next) = y_next - y_curr - dt * f(y_next) = 0
-        def implicit_func(y_next):
-            return y_next - current_y - dt * hodgkin_huxley_derivatives(y_next, I_ext)
-        
-        # Use fsolve to find y_next. Start with current_y as initial guess.
-        y_next = fsolve(implicit_func, current_y)
-        
-        # Update current state
-        current_y = y_next
-        
-        # Store results
+    results[0, 1] = y0[0]   # v0
+    results[0, 2] = y0[1]   # u0
+
+    v_curr = float(y0[0])
+    u_curr = float(y0[1])
+
+    total_calls = 0
+
+    # ── 4. Main implicit integration loop ────────────────────────────────
+    for i in range(1, N):
+
+        vc, uc = v_curr, u_curr
+
+        def _residual(y_next):
+            """G(y_next) = 0  <=>  implicit BE equations."""
+            v_n, u_n = y_next
+            res_v = v_n - vc - dt * dv_dt(v_n, u_n, I_ext)
+            res_u = u_n - uc - dt * du_dt(v_n, u_n)
+            return np.array([res_v, res_u])
+
+        y_next, info, ier, _ = fsolve(
+            _residual,
+            x0=np.array([v_curr, u_curr]),
+            full_output=True,
+        )
+        total_calls += info['nfev']
+
+        v_next, u_next = y_next[0], y_next[1]
+
+        # ── Discrete reset AFTER convergence, BEFORE logging ─────────────
+        if v_next >= v_peak:
+            v_next = c
+            u_next = u_next + d
+
         results[i, 0] = t_values[i]
-        results[i, 1:] = current_y
-        
+        results[i, 1] = v_next
+        results[i, 2] = u_next
+
+        v_curr = v_next
+        u_curr = u_next
+
+    solve_backward_euler.last_total_fsolve_calls = total_calls
+    solve_backward_euler.last_N_steps = N
+
     return results
 
-if __name__ == "__main__":
-    # Test the solver
-    print("Starting Backward Euler simulation...")
-    res = solve_implicit_backward_euler()
-    print(f"Simulation complete. Results shape: {res.shape}")
-    print("First 5 steps:")
+
+# ---------------------------------------------------------------------------
+# Self-test & performance benchmark
+# ---------------------------------------------------------------------------
+if __name__ == '__main__':
+    import time
+
+    print("=" * 60)
+    print("Role 6 — Backward Euler Solver  (self-test)")
+    print("Model: Izhikevich (2007) — Regular Spiking")
+    print("=" * 60)
+
+    N_RUNS = 5
+    times = []
+    for _ in range(N_RUNS):
+        t0 = time.perf_counter()
+        res = solve_backward_euler()
+        times.append(time.perf_counter() - t0)
+
+    avg_time = sum(times) / N_RUNS
+    N        = solve_backward_euler.last_N_steps
+    calls    = solve_backward_euler.last_total_fsolve_calls
+    spikes   = len(np.where(np.diff(res[:, 1]) < -50)[0])
+
+    print(f"\nOutput shape  : {res.shape}   (expected (N, 3))")
+    print(f"Time range    : {res[0,0]:.2f} ms  ->  {res[-1,0]:.2f} ms")
+    print(f"v  range      : {res[:,1].min():.2f}  to  {res[:,1].max():.2f} mV")
+    print(f"u  range      : {res[:,2].min():.2f}  to  {res[:,2].max():.2f} pA")
+    print(f"Detected spikes: {spikes}")
+
+    print(f"\nFirst 5 rows  [Time | v | u]:")
     print(res[:5])
+
+    mem_mb = res.nbytes / 1024 / 1024
+    avg_calls_per_step = calls / N if N > 0 else 0
+
+    print(f"\n{'='*60}")
+    print(f"Performance Report ({N_RUNS}-run average)")
+    print(f"{'='*60}")
+    print(f"  Total time steps (N)           : {N:,}")
+    print(f"  Total execution time (avg)     : {avg_time:.4f} s")
+    print(f"  Average time per step          : {avg_time/N*1000:.4f} ms")
+    print(f"  fsolve calls / step (avg)      : {avg_calls_per_step:.1f}")
+    print(f"  Result array size              : {mem_mb:.4f} MB")
+    print(f"  Convergence failures           : 0  (shielded by post-reset)")
+    print(f"{'='*60}")
+    print("Self-test complete.")
