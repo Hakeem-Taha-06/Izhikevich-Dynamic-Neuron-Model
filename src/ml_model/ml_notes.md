@@ -1,7 +1,13 @@
 # Role 10: ML Notes
 
 ## Purpose
-Document the ML training workspace for the Izhikevich spiking neuron project.
+Document the ML training workspace for the Izhikevich spiking neuron project (2007 generalized form).
+
+## Model Reference
+Izhikevich (2007) generalized biophysical model:
+- `C_m * dv/dt = k*(v - v_r)*(v - v_t) - u + I_ext`
+- `du/dt       = a*{ b*(v - v_r) - u }`
+- `if v >= v_peak:  v <- c,  u <- u + d`
 
 ## `config.py` imports
 - `INITIAL_STATE`
@@ -9,6 +15,7 @@ Document the ML training workspace for the Izhikevich spiking neuron project.
 - `T_END`
 - `DT_EVAL`
 - `I_EXT_DEFAULT`
+- `C_m`, `k`, `v_r`, `v_t`, `v_peak`
 - `a`, `b`, `c`, `d`
 
 ## Must achieve

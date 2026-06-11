@@ -2,6 +2,16 @@
 
 Welcome to the **Izhikevich Dynamic Neuron Model** repository. This project is a collaborative effort by an 11-person university engineering team to implement, solve, train, and evaluate the biophysical Izhikevich neuron model using traditional numerical integration methods and Physics-Informed Neural Networks (PINNs).
 
+**Model Reference:** Izhikevich, E. M. (2007). *Dynamical Systems in Neuroscience: The Geometry of Excitability and Bursting*. MIT Press.
+
+**Governing Equations (2007 Generalized Biophysical Form):**
+
+$$C_m \frac{dv}{dt} = k(v - v_r)(v - v_t) - u + I_{ext}$$
+
+$$\frac{du}{dt} = a\{ b(v - v_r) - u \}$$
+
+**After-spike reset:** If $v \ge v_{peak}$, then $v \leftarrow c$, $u \leftarrow u + d$.
+
 ---
 
 ## 📂 Project Directory Structure
@@ -56,9 +66,9 @@ The project is structured across 11 distinct engineering roles. See [ROLES.md](R
 | | Role 2: Literature Reviewer | N/A (Paper Only) |
 | | Role 3: Math Modeler | `src/theory/math_theory_notes.md` |
 | **Phase 1** | Role 4: Data Engineer | `src/numerical/ground_truth_generator.py` |
-| | Role 5: Explicit Solver (RK4) | `src/numerical/explicit_rk4.py` |
+| | Role 5: Explicit Solver (RK4) | `src/numerical/rk4.py` |
 | | Role 6: Implicit Solver (BE) | `src/numerical/backward_euler.py` |
-| | Role 7: Multi-Step (AB2) | `src/numerical/adams_bashforth.py` |
+| | Role 7: Multi-Step (AB2) | `src/numerical/adams_bashforth2.py` |
 | **Phase 2** | Role 8: ML Architect | `src/ml_model/architecture.py` |
 | | Role 9: ML Loss Designer | `src/ml_model/physics_loss.py` |
 | | Role 10: ML Training Operator | `src/ml_model/train.py` |
@@ -76,6 +86,6 @@ Each role has a `.md` notes file alongside their `.py` file. **You must fill in 
 - **Column Order:** `[Time, v, u]`
   1. `Time` (ms)
   2. `v` (membrane potential in mV)
-  3. `u` (recovery variable)
+  3. `u` (recovery variable in pA)
 
-*Note: The discrete reset (If v >= 30 mV, then v <- c, u <- u + d) must be correctly enforced in all numerical methods except Role 4, which handles segmented integration.*
+*Note: The discrete reset (If v >= v_peak, then v ← c, u ← u + d) must be correctly enforced in all numerical methods except Role 4, which handles segmented integration.*

@@ -4,6 +4,13 @@ Purpose
 -------
 Reserve this module for the explicit fourth-order Runge-Kutta solver documentation and interface contract.
 
+Model Reference
+---------------
+Izhikevich (2007) generalized biophysical model:
+    C_m * dv/dt = k*(v - v_r)*(v - v_t) - u + I_ext
+    du/dt       = a*{ b*(v - v_r) - u }
+    if v >= v_peak:  v <- c,  u <- u + d
+
 Required `config.py` imports
 ----------------------------
 - `INITIAL_STATE`
@@ -11,13 +18,14 @@ Required `config.py` imports
 - `T_END`
 - `DT_EVAL`
 - `I_EXT_DEFAULT`
+- `C_m`, `k`, `v_r`, `v_t`, `v_peak`
 - `a`, `b`, `c`, `d`
 
 Must achieve
 ------------
 - Describe the explicit solver role in the Izhikevich project.
 - State the expected input/output contract for the solver.
-- Support the team’s numerical comparison workflow.
+- Support the team's numerical comparison workflow.
 
 Strict output interface rule
 -----------------------------

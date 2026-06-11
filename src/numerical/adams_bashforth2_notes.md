@@ -1,7 +1,13 @@
 # Role 7: AB2 Notes
 
 ## Purpose
-Document the Adams-Bashforth 2 solver contract for the Izhikevich neuron model.
+Document the Adams-Bashforth 2 solver contract for the Izhikevich neuron model (2007 generalized form).
+
+## Model Reference
+Izhikevich (2007) generalized biophysical model:
+- `C_m * dv/dt = k*(v - v_r)*(v - v_t) - u + I_ext`
+- `du/dt       = a*{ b*(v - v_r) - u }`
+- `if v >= v_peak:  v <- c,  u <- u + d`
 
 ## `config.py` imports
 - `INITIAL_STATE`
@@ -9,10 +15,11 @@ Document the Adams-Bashforth 2 solver contract for the Izhikevich neuron model.
 - `T_END`
 - `DT_EVAL`
 - `I_EXT_DEFAULT`
+- `C_m`, `k`, `v_r`, `v_t`, `v_peak`
 - `a`, `b`, `c`, `d`
 
 ## Must achieve
-- Explain the solver’s role in the project.
+- Explain the solver's role in the project.
 - Keep the output interface aligned with the rest of the pipeline.
 - Provide a future-facing notes workspace.
 
@@ -23,4 +30,4 @@ All numerical and ML predictive outputs must return `numpy.ndarray` of shape `(N
 - Documentation only.
 - No implementation code.
 - No formulas or loops.
-- No solver logic."""
+- No solver logic.
