@@ -146,12 +146,16 @@ def solve_backward_euler(y0=None, t_span=None, dt=None, I_ext=None):
 
         # ── Discrete reset AFTER convergence, BEFORE logging ─────────────
         if v_next >= v_peak:
+            results[i, 0] = t_values[i]
+            results[i, 1] = v_peak
+            results[i, 2] = u_next
+            
             v_next = c
             u_next = u_next + d
-
-        results[i, 0] = t_values[i]
-        results[i, 1] = v_next
-        results[i, 2] = u_next
+        else:
+            results[i, 0] = t_values[i]
+            results[i, 1] = v_next
+            results[i, 2] = u_next
 
         v_curr = v_next
         u_curr = u_next
