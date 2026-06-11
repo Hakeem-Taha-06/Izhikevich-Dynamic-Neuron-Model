@@ -1,8 +1,8 @@
-"""Role 1: Master Execution Script
+"""Role 10: ML Training Workspace
 
 Purpose
 -------
-Define the top-level execution contract for the Izhikevich spiking neuron project.
+Reserve this module for the ML training-loop contract for the Izhikevich project.
 
 Required `config.py` imports
 ----------------------------
@@ -15,9 +15,9 @@ Required `config.py` imports
 
 Must achieve
 ------------
-- Coordinate the project entry point.
-- Reference the numerical, ML, and evaluation stages.
-- Preserve the shared output contract for every stage.
+- Describe the training stage responsibilities.
+- Define where trained weights and predictions will be saved.
+- Keep the project-wide output schema explicit.
 
 Strict output interface rule
 -----------------------------
@@ -26,5 +26,6 @@ All numerical and ML predictive outputs must return `numpy.ndarray` of shape `(N
 Constraints
 -----------
 - No implementation code.
-- No orchestration logic.
-- No imports beyond documentation-only placeholders in this scaffold."""
+- No optimizer or training loops.
+- No model fitting logic.
+- Documentation-only scaffold."""

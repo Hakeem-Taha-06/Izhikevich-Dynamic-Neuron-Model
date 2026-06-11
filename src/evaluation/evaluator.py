@@ -1,8 +1,8 @@
-"""Role 1: Master Execution Script
+"""Role 11: Evaluation Workspace
 
 Purpose
 -------
-Define the top-level execution contract for the Izhikevich spiking neuron project.
+Reserve this module for evaluation, benchmarking, and figure-generation contracts.
 
 Required `config.py` imports
 ----------------------------
@@ -15,9 +15,9 @@ Required `config.py` imports
 
 Must achieve
 ------------
-- Coordinate the project entry point.
-- Reference the numerical, ML, and evaluation stages.
-- Preserve the shared output contract for every stage.
+- Document the evaluator workspace for the Izhikevich project.
+- Specify the comparison and reporting responsibilities.
+- Preserve the final project interface used by the team.
 
 Strict output interface rule
 -----------------------------
@@ -26,5 +26,6 @@ All numerical and ML predictive outputs must return `numpy.ndarray` of shape `(N
 Constraints
 -----------
 - No implementation code.
-- No orchestration logic.
-- No imports beyond documentation-only placeholders in this scaffold."""
+- No benchmarking loops.
+- No plotting logic.
+- Documentation-only scaffold."""

@@ -1,8 +1,8 @@
-"""Role 1: Master Execution Script
+"""Role 8: ML Architecture Workspace
 
 Purpose
 -------
-Define the top-level execution contract for the Izhikevich spiking neuron project.
+Reserve this module for the neural-network architecture contract used in the Izhikevich project.
 
 Required `config.py` imports
 ----------------------------
@@ -15,9 +15,9 @@ Required `config.py` imports
 
 Must achieve
 ------------
-- Coordinate the project entry point.
-- Reference the numerical, ML, and evaluation stages.
-- Preserve the shared output contract for every stage.
+- Describe the neural architecture workspace for the ML stage.
+- State the expected input and output contract.
+- Keep the file ready for future model implementation.
 
 Strict output interface rule
 -----------------------------
@@ -26,5 +26,6 @@ All numerical and ML predictive outputs must return `numpy.ndarray` of shape `(N
 Constraints
 -----------
 - No implementation code.
-- No orchestration logic.
-- No imports beyond documentation-only placeholders in this scaffold."""
+- No model layers.
+- No training logic.
+- Documentation-only scaffold."""

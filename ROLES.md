@@ -1,103 +1,147 @@
-# Project: Dynamic Neuron Model (Hodgkin-Huxley)
-## Team Labor Distribution & Interface Contracts
+# Project: Izhikevich Dynamic Neuron Model
+## Master Engineering Contract & Role Distribution
 
-**Deadline:** Saturday, June 13th, 2026, 7:00 AM.
+**Hard Deadline:** Saturday, June 13th, 2026, 7:00 AM.
 
-**Master Interface Rule:** ALL numerical methods and AI models must output their simulation results as a NumPy array of shape `(N, 5)`, where the columns are strictly ordered as `[Time, Voltage, m, h, n]`.
+**Internal Deadline:** Friday, June 12th, 2026, 10:00 PM.
 
-**Documentation Rule:** Each role (3–10) has a `_notes.md` file next to their `.py` workspace. You **must** fill in this file with the tables, analysis, and method descriptions specified inside it.
-
-**Output Directories:**
-- `data/` — Ground truth CSVs
-- `outputs/figures/` — All generated plots (see `FIGURES_README.md` inside)
-- `outputs/models/` — Trained model weights (see `MODELS_README.md` inside)
+**Master Interface Rule:** ALL numerical methods and AI models must output their simulation results as a NumPy array of shape `(N, 3)`, specifically ordered as `[Time, v, u]`. 
 
 ---
 
-### Phase 0: The Command Layer
-#### **Role 1: Team Leader & Editor**
-* **Objective:** Repository management, final pipeline integration, and crafting the IEEE Overleaf paper.
-* **Inputs:** Raw drafts, metrics, phase plots, and literature summaries from all team members.
-* **Outputs:** The final merged GitHub repository and the unified 4-page IEEE PDF.
-* **Dependencies:** Receives deliverables from everyone. Enforces the deadline.
+### ⚠️ THE GLOBAL CONSTRAINT: THE DISCRETE RESET ⚠️
+The Izhikevich model is NOT a continuous curve. All coders (except Role 4) must manually write logic inside their loops to handle the voltage spike:
+**If $v \ge 30$ mV, then immediately set $v \leftarrow c$ and $u \leftarrow u + d$.**
+
+---
+
+### Phase 1: Command & Theory
+
+#### **Role 1: Team Leader & Editor (Project Manager)**
+* **Objective:** Ensure all moving parts fit together and write the final IEEE paper.
+* **Inputs:** Markdown notes, metrics, and graphs from all other members.
+* **Actionable Tasks:**
+    1. Act as the GitHub gatekeeper. Approve all Pull Requests.
+    2. Stitch the theoretical notes (Role 3), numerical notes (Roles 5-7), and ML notes (Roles 8-10) into the Methodology section.
+    3. Write the Abstract, Conclusion, and format the IEEE Overleaf document.
+* **Deliverable:** The final merged GitHub repository and the 4-page IEEE PDF.
 
 #### **Role 2: Literature Reviewer**
-* **Objective:** Conduct academic research and contextualize the biological problem based purely on recent published work.
-* **Inputs:** IEEE Xplore, PubMed, arXiv (Strictly 2022-2026 publications).
-* **Outputs:** A rigorously cited Introduction and Literature Review section for the final IEEE paper. 
-* **Dependencies:** Delivers text to Role 1. (Does not write technical code or graph internal results).
+* **Objective:** Contextualize the project using recent academic literature.
+* **Inputs:** IEEE Xplore, PubMed, arXiv.
+* **Actionable Tasks:**
+    1. Research papers published strictly between **2022 and 2026**.
+    2. Write the theoretical background explaining *why* the Izhikevich model is used (computational efficiency combined with biological accuracy compared to Hodgkin-Huxley).
+* **Deliverable:** A rigorously cited text draft delivered directly to Role 1. (No coding required).
+
+#### **Role 3: Mathematical Modeler**
+* **Objective:** Own the pure mathematics and biological parameters of the project.
+* **Inputs:** Reference text (Schiesser) and biological literature.
+* **Actionable Tasks:**
+    1. Define and maintain the `config.py` file. Set the $a, b, c, d$ parameters for the default "Regular Spiking" state.
+    2. Write the "Mathematical Formulation" text explaining the ODEs, the nullclines, and the reset condition.
+* **Deliverable:** The `config.py` file and `/src/theory/math_theory_notes.md`.
 
 ---
 
-### Phase 1: Mathematical Foundation
-#### **Role 3: Mathematical Modeler & Baseline Developer**
-* **Objective:** Define the biological constants, implement the reference ODE solver (LSODA), and author the theoretical methodology.
-* **Inputs:** Schiesser Chapter 4 reference text.
-* **Outputs:** 1. Verified `config.py` containing standard biological constants.
-    2. The functional `baseline_lsoda.py` script.
-    3. The "Mathematical Modeling" draft explaining the ODEs for the paper.
-* **Documentation:** Fill in `baseline_lsoda_notes.md` with the ODE formulation, constants verification table, and solver justification.
-* **Dependencies:** Delivers verified `config.py` and the LSODA script to Role 9 (Evaluator). Delivers math draft to Role 1.
+### Phase 2: 
+
+#### A) Data Pipeline
+
+#### **Role 4: Ground Truth & Data Engineer**
+* **Objective:** You are the foundation of the Machine Learning phase. Your task is to generate a mathematically flawless, high-fidelity dataset containing ~4,000 unique neuron simulations. If your data is corrupted or inaccurate, the AI model (Roles 8, 9, 10) is mathematically doomed to fail.
+* **Workspace:** `/src/numerical/ground_truth_generator.py`
+* **Deliverable:** `/data/ground_truth.csv`
+
+**1. The Engineering Trap: The Discrete Reset**
+The Izhikevich model dictates that when the membrane potential ($v$) hits 30 mV, it instantly resets to $c$, and the recovery variable ($u$) jumps by $d$. 
+* **The Problem:** Continuous industrial solvers (like `solve_ivp`) do not understand teleportation. If you just run the solver for 100ms, it will mathematically overshoot the 30 mV threshold, ruining the spike timing and corrupting the dataset.
+* **Your Required Architecture:** You must implement **Segmented Integration**. You are required to use an event tracker built into your solver to detect the exact microsecond $v$ reaches 30. When that event triggers, you must command the solver to completely halt. You will then manually apply the mathematical reset to the state variables, log the discrete jump in your data arrays, and initialize a *new* solver run from that exact timestamp to continue the simulation until you reach the 100ms target. 
+* **Solver Constraints:** Because this is a stiff differential system, you are required to use a stiff solver method (e.g., `Radau` or `LSODA`). Set your relative tolerance to $10^{-6}$ and absolute tolerance to $10^{-9}$.
+
+**2. The Iteration Grid (Data Volume)**
+A neural network needs diverse data to learn the underlying physics. You must construct a nested loop system to simulate the neuron under varying conditions. Your grid must sweep through:
+* **Current ($I_{ext}$):** From 0.0 to 20.0 in steps of 0.5 (40 variations).
+* **Initial Voltage ($V_0$):** From -85.0 mV to -45.0 mV in steps of 2.0 (20 variations).
+* **Initial Recovery ($U_0$):** Use an array of 5 variations around the steady state (e.g., -15.0, -13.0, -10.0, -5.0, 0.0).
+* **Target:** Exactly 4,000 distinct simulation runs.
+
+**3. The Output Schema**
+Your final output must be exported via Pandas to `/data/ground_truth.csv`. The time step must be strictly interpolated to `0.01` ms. The CSV must perfectly match this structure:
+
+| Sim_ID | Time (ms) | I_ext | v (Voltage) | u (Recovery) |
+| :--- | :--- | :--- | :--- | :--- |
+| 1 | 0.00 | 5.0 | -65.000 | -13.000 |
+| 1 | 0.01 | 5.0 | -64.821 | -12.998 |
+| ... | ... | ... | ... | ... |
+
+*(Note: `Sim_ID` must increment by 1 for each new combination of initial conditions in your nested loop).*
 
 ---
 
-### Phase 2: Numerical Engineering
-#### **Role 4: Explicit Solver Developer (RK4)**
-* **Objective:** Implement the 4th-Order Runge-Kutta method and find its stability breaking point.
+#### B) Numerical Engineering
+
+#### **Role 5: Explicit Method Developer (RK4)**
+* **Objective:** Implement the 4th-Order Runge-Kutta from scratch.
 * **Inputs:** `config.py`.
-* **Outputs:** 1. A working RK4 Python function.
-    2. A text report detailing the explicit time/space complexity and the exact time-step ($h$) where the method crashes (NaN errors).
-* **Documentation:** Fill in `explicit_rk4_notes.md` with the complexity analysis table and stability breakdown report.
-* **Dependencies:** Delivers function to Roles 9 & 10. Delivers complexity notes to Role 1.
+* **Actionable Tasks:**
+    1. Code the 4-stage RK4 logic. Apply the reset check *after* every single time-step.
+    2. Find the exact time-step ($h$) where the method goes unstable and crashes (NaN). 
+* **Deliverable:** `/src/numerical/explicit_rk4.py` and `rk4_notes.md` (detailing the stability limit and Big-O complexity).
 
-#### **Role 5: Implicit Solver Developer (Backward Euler)**
-* **Objective:** Implement the unconditionally stable Backward Euler method using `scipy.optimize.fsolve` for the internal root-finding loop.
+#### **Role 6: Implicit Method Developer (Backward Euler)**
+* **Objective:** Implement an unconditionally stable implicit solver.
 * **Inputs:** `config.py`.
-* **Outputs:** 1. A working Backward Euler Python function.
-    2. A text report detailing the implicit time/space complexity.
-* **Documentation:** Fill in `implicit_backward_euler_notes.md` with the complexity analysis and unconditional stability proof.
-* **Dependencies:** Delivers function to Roles 9 & 10. Delivers complexity notes to Role 1.
+* **Actionable Tasks:**
+    1. Use `scipy.optimize.fsolve` at every time-step to solve the non-linear algebraic equation caused by the implicit formulation.
+    2. Ensure the root-finding algorithm does not break when the voltage crosses the 30 mV reset threshold.
+* **Deliverable:** `/src/numerical/backward_euler.py` and `be_notes.md` (detailing root-finding performance).
+
+#### **Role 7: Multi-Step Method Developer (Adams-Bashforth 2)**
+* **Objective:** Implement the 2nd-Order AB2 method.
+* **Inputs:** `config.py`.
+* **Actionable Tasks:**
+    1. Build the history array to predict the next step using past data.
+    2. **Crucial Trap:** When the neuron spikes and resets, the "history" becomes invalid. You must write logic to flush the history array and restart the method (using Euler or RK2 for one step) before resuming AB2.
+* **Deliverable:** `/src/numerical/adams_bashforth.py` and `ab2_notes.md` (explaining the history flush logic).
 
 ---
 
-### Phase 3: Machine Learning (PINN)
-#### **Role 6: ML Architect**
-* **Objective:** Design the PyTorch neural network architecture.
-* **Inputs:** Expected input/output shapes (Time in $\rightarrow [V, m, h, n]$ out).
-* **Outputs:** The `nn.Module` class utilizing differentiable activation functions (e.g., `Tanh`).
-* **Documentation:** Fill in `architecture_notes.md` with the architecture summary table, layer diagram, and design justification.
-* **Dependencies:** Delivers the model architecture to Roles 7 & 8.
+### Phase 3: Machine Learning (PINN/Supervised)
 
-#### **Role 7: ML Loss Function Designer**
-* **Objective:** Encode the Hodgkin-Huxley ODEs into a custom PyTorch Autograd loss function.
-* **Inputs:** Model architecture (Role 6) and `config.py` constants (Role 3).
-* **Outputs:** A functional `physics_loss(model, t_collocation)` Python method that penalizes the network for violating the ODEs.
-* **Documentation:** Fill in `physics_loss_notes.md` with the residual equations, autograd explanation, and config constants verification.
-* **Dependencies:** Must strictly mirror Role 3's constants. Delivers loss function to Role 8.
+#### **Role 8: ML Architect**
+* **Objective:** Build the PyTorch Neural Network skeleton.
+* **Inputs:** Expected data shape.
+* **Actionable Tasks:**
+    1. Design an `nn.Module` that accepts `[Time, I_ext, V_0, U_0]` as inputs and outputs `[v, u]`.
+    2. Select differentiable activation functions (e.g., Tanh or SiLU).
+* **Deliverable:** `/src/ml_model/architecture.py`.
 
-#### **Role 8: ML Training Loop Operator**
-* **Objective:** Train the PINN to convergence and export the final AI-predicted trajectories.
-* **Inputs:** Ground Truth data (from Role 9), Model (Role 6), Loss Function (Role 7).
-* **Outputs:** 1. The fully trained PyTorch model weights (`.pt`) saved to `outputs/models/`.
-    2. The AI's predicted trajectory array.
-* **Documentation:** Fill in `train_notes.md` with the hyperparameter table, convergence report, and loss curve.
-* **Dependencies:** Delivers predicted array to Roles 9 & 10 for evaluation.
+#### **Role 9: ML Loss Function Designer**
+* **Objective:** Force the AI to obey physics.
+* **Inputs:** ODEs from `config.py` and Architecture from Role 8.
+* **Actionable Tasks:**
+    1. Write the Autograd logic to calculate gradients of $v$ and $u$ with respect to Time.
+    2. **Crucial Trap:** The jump at $v=30$ will cause infinite gradients and crash the training. You must design a workaround (e.g., masking the loss exactly at the spike, or using piecewise continuous training). This is the hardest task on the team.
+* **Deliverable:** `/src/ml_model/physics_loss.py`.
+
+#### **Role 10: ML Training Loop Operator**
+* **Objective:** Train the model and export the results.
+* **Inputs:** `ground_truth.csv` (Role 4), Model (Role 8), Loss (Role 9).
+* **Actionable Tasks:**
+    1. Build the PyTorch DataLoader.
+    2. Execute the training loop (epochs, batching, optimizer switching from Adam to L-BFGS).
+    3. Feed a test input into the trained model to generate the final predicted trajectory.
+* **Deliverable:** `/src/ml_model/train.py`, the saved `.pt` weights in `/outputs/models/`, and the final array to Role 11.
 
 ---
 
-### Phase 4: Evaluation & Testing
-#### **Role 9: The Evaluator (Trajectory Accuracy & Speed)**
-* **Objective:** Generate the Ground Truth data, then measure and benchmark all team models.
-* **Inputs:** `config.py` and `baseline_lsoda.py` (from Role 3) + predicted trajectories from Roles 4, 5, and 8.
-* **Outputs:** 1. The Ground Truth dataset (`.csv`) saved to `data/`.
-    2. The master Evaluation Table (RMSE and Execution Time for all methods).
-    3. Final Result Graphs saved to `outputs/figures/`.
-* **Documentation:** Fill in `evaluator_rmse_notes.md` with the RMSE metrics table, timing methodology, and plot descriptions.
-* **Dependencies:** Delivers the CSV to Role 8 for training. Delivers final graphs and tables to Role 1.
+### Phase 4: Evaluation & Analytics
 
-#### **Role 10: Physics Coherency Analyst (The Crash Tester)**
-* **Objective:** Calculate the exact $I_{ext}$ Bifurcation Threshold for every method to prove physical validity.
-* **Inputs:** The functional solver scripts/models from Roles 3, 4, 5, and 8.
-* **Outputs:** A Bifurcation Diagram saved to `outputs/figures/` showing the exact current threshold where each model transitions from a resting state to continuous spiking.
-* **Documentation:** Fill in `bifurcation_physics_notes.md` with the sweep configuration, threshold results table, and physical validity conclusions.
-* **Dependencies:** Imports solvers from Roles 3, 4, 5, and 8. Delivers the master bifurcation graph to Role 1.
+#### **Role 11: Master Evaluator & Analyst**
+* **Objective:** Prove which method is best and visualize the biological behaviors.
+* **Inputs:** Output arrays from Roles 4, 5, 6, 7, and 10.
+* **Actionable Tasks:**
+    1. **Efficiency Analysis:** Calculate the RMSE against the Ground Truth and log the execution time (Wall-Clock) for every method. Format this into a master table.
+    2. **Biological Pattern Testing:** Change the $a, b, c, d$ parameters in `config.py` to trigger different states (e.g., Regular Spiking vs. Chattering). Rerun all solvers. Generate Phase Portraits (plotting $v$ vs $u$) and Time-Series graphs (Time vs $v$) to prove the methods adapted correctly.
+* **Deliverable:** `/src/evaluation/evaluator.py`, `eval_notes.md`, and all PNG/PDF graphs saved to `/outputs/figures/`.

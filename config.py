@@ -1,58 +1,52 @@
 """
 config.py
-Master Configuration File for the Dynamic Neuron Model (Hodgkin-Huxley).
-ALL team members must import their constants from this file. DO NOT hardcode these values.
+Master Configuration File for the Izhikevich Neuron Model.
+Owned by Role 3 (Mathematical Modeler).
+
+WARNING TO ALL DEVELOPERS: The discrete reset condition (v >= 30) MUST be 
+handled inside your numerical loops. Do not attempt to calculate derivatives 
+across the jump boundary.
 """
 import numpy as np
 
 # ==========================================
-# 1. BIOLOGICAL CONSTANTS (Hodgkin-Huxley)
+# 1. IZHIKEVICH PARAMETERS (Regular Spiking Default)
 # ==========================================
-# Maximal conductances (mS/cm^2)
-G_NA = 120.0  # Sodium
-G_K = 36.0    # Potassium
-G_L = 0.3     # Leak
+# Role 11 will override these during biological pattern analysis testing.
+A = 0.02
+B = 0.2
+C = -65.0
+D = 8.0
 
-# Reversal potentials (mV)
-E_NA = 50.0   # Sodium
-E_K = -77.0   # Potassium
-E_L = -54.4   # Leak
-
-# Membrane Capacitance (uF/cm^2)
-C_M = 1.0
+# The discrete reset threshold (mV)
+V_THRESH = 30.0
 
 # ==========================================
-# 2. DEFAULT INITIAL CONDITIONS (Resting State)
+# 2. DEFAULT INITIAL CONDITIONS
 # ==========================================
-# [Voltage (mV), m (dim-less), h (dim-less), n (dim-less)]
+# [Membrane Potential v (mV), Recovery Variable u]
 V_0 = -65.0
-M_0 = 0.052
-H_0 = 0.596
-N_0 = 0.317
+U_0 = B * V_0  # Steady state formulation
 
-INITIAL_STATE = np.array([V_0, M_0, H_0, N_0])
+INITIAL_STATE = np.array([V_0, U_0])
 
 # ==========================================
-# 3. SIMULATION PARAMETERS
+# 3. SIMULATION SETTINGS
 # ==========================================
 T_START = 0.0
-T_END = 100.0     # Simulate for 100 milliseconds
-DT_EVAL = 0.01    # Output resolution (ensure all arrays match length)
+T_END = 100.0     
+DT_EVAL = 0.01    # Required resolution for the Ground Truth dataset
 
-# Default External Current injection (uA/cm^2)
-# Note: Role 10 will override this variable during the Bifurcation sweep.
+# Default External Current
 I_EXT_DEFAULT = 10.0 
 
 # ==========================================
-# 4. SHARED GATING KINETICS FUNCTIONS
+# 4. SHARED ODE FUNCTIONS
 # ==========================================
-# Provided here so Roles 3, 4, 5, and 7 use the exact same mathematical forms.
+def dv_dt(v, u, I_ext):
+    """Calculates the derivative of the membrane potential."""
+    return 0.04 * v**2 + 5.0 * v + 140.0 - u + I_ext
 
-def alpha_m(V): return 0.1 * (V + 40.0) / (1.0 - np.exp(-(V + 40.0) / 10.0))
-def beta_m(V):  return 4.0 * np.exp(-(V + 65.0) / 18.0)
-
-def alpha_h(V): return 0.07 * np.exp(-(V + 65.0) / 20.0)
-def beta_h(V):  return 1.0 / (1.0 + np.exp(-(V + 35.0) / 10.0))
-
-def alpha_n(V): return 0.01 * (V + 55.0) / (1.0 - np.exp(-(V + 55.0) / 10.0))
-def beta_n(V):  return 0.125 * np.exp(-(V + 65.0) / 80.0)
+def du_dt(v, u):
+    """Calculates the derivative of the recovery variable."""
+    return A * (B * v - u)

@@ -1,7 +1,8 @@
 """
 Numerical solvers subpackage.
-Provides reference solvers for the Hodgkin-Huxley model:
-- Baseline LSODA solver
+Provides reference solvers for the Izhikevich model:
+- Ground truth generator
 - Explicit 4th-Order Runge-Kutta (RK4) solver
-- Implicit Backward Euler solver
+- Backward Euler solver
+- Adams-Bashforth 2 solver
 """

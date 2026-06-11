@@ -1,8 +1,8 @@
-"""Role 1: Master Execution Script
+"""Role 7: Adams-Bashforth 2 Workspace
 
 Purpose
 -------
-Define the top-level execution contract for the Izhikevich spiking neuron project.
+Reserve this module for the AB2 solver documentation and contract management.
 
 Required `config.py` imports
 ----------------------------
@@ -15,9 +15,9 @@ Required `config.py` imports
 
 Must achieve
 ------------
-- Coordinate the project entry point.
-- Reference the numerical, ML, and evaluation stages.
-- Preserve the shared output contract for every stage.
+- Describe the AB2 solver role in the Izhikevich project.
+- Preserve the shared baseline output interface.
+- Document the solver’s handoff to the ML and evaluation stages.
 
 Strict output interface rule
 -----------------------------
@@ -26,5 +26,6 @@ All numerical and ML predictive outputs must return `numpy.ndarray` of shape `(N
 Constraints
 -----------
 - No implementation code.
-- No orchestration logic.
-- No imports beyond documentation-only placeholders in this scaffold."""
+- No loops.
+- No predictor-corrector or history logic.
+- Documentation-only scaffold."""
