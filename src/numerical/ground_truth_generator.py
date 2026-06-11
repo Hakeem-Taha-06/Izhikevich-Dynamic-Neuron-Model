@@ -162,10 +162,13 @@ if __name__ == "__main__":
     data_dir = Path(__file__).resolve().parents[2] / "data"
     data_dir.mkdir(exist_ok=True)
 
-    np.save(
-        data_dir / "ground_truth.npy",
-        ground_truth
-    )
+    np.savetxt(
+    data_dir / "ground_truth.csv",
+    ground_truth,
+    delimiter=",",
+    header="time,v,u",
+    comments=""
+)
 
     print("\nDataset saved successfully.")
 
