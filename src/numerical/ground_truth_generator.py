@@ -8,9 +8,9 @@ This module is reserved for the baseline dataset pipeline and its narrative cont
 Model Reference
 ---------------
 Izhikevich (2007) generalized biophysical model:
-    C_m * dv/dt = k*(v - v_r)*(v - v_t) - u + I_ext
-    du/dt       = a*{ b*(v - v_r) - u }
-    if v >= v_peak:  v <- c,  u <- u + d
+    C_m * dv/dt = k*(v - v_r)*(v - v_t) - w + I_ext
+    dw/dt       = a*{ b*(v - v_r) - w }
+    if v >= v_peak:  v <- c,  w <- w + d
 
 Required `config.py` imports
 ----------------------------
@@ -30,7 +30,7 @@ Must achieve
 
 Strict output interface rule
 -----------------------------
-All numerical and ML predictive outputs must return `numpy.ndarray` of shape `(N, 3)` ordered as `[Time, v, u]`.
+All numerical and ML predictive outputs must return `numpy.ndarray` of shape `(N, 3)` ordered as `[Time, v, w]`.
 
 Constraints
 -----------
@@ -45,7 +45,7 @@ Constraints
 
 from scipy.integrate import solve_ivp
 import numpy as np
-import matplotlib.pyplot as plt
+import pandas as pd
 import sys
 from pathlib import Path
 
@@ -54,94 +54,98 @@ from pathlib import Path
 # =====================================================
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
-from config import (
-    INITIAL_STATE,
-    T_START,
-    T_END,
-    DT_EVAL,
-    I_EXT_DEFAULT,
-    dv_dt,
-    du_dt
-)
-
+from config import *
 
 # =====================================================
 # ODE system
 # =====================================================
-def izhikevich_system(t, y):
-    """
-    State vector
+def neuron_ode(t, y, I_ext):
+    v, w = y
 
-    y[0] = membrane potential v
-    y[1] = recovery variable u
-    """
+    dv = (k * (v - v_r) * (v - v_t) - w + I_ext) / C_m
+    dw = a * (b * (v - v_r) - w)
 
-    v, u = y
-
-    dv = dv_dt(v, u, I_EXT_DEFAULT)
-    du = du_dt(v, u)
-
-    return [dv, du]
+    return [dv, dw]
 
 
-# =====================================================
-# Generate Ground Truth
-# =====================================================
-def generate_ground_truth():
+def spike_event(t, y, I_ext):
+    return y[0] - v_peak
 
-    # Time vector
-    time = np.arange(
-        T_START,
-        T_END + DT_EVAL,
-        DT_EVAL
-    )
 
-    N = len(time)
+spike_event.terminal = True
+spike_event.direction = 1
 
-    # Arrays
-    v = np.zeros(N)
-    u = np.zeros(N)
 
-    # Initial conditions
-    v[0] = INITIAL_STATE[0]
-    u[0] = INITIAL_STATE[1]
+def run_single_simulation(I_ext, V0, U0):
 
-    # Main loop
-    for i in range(N - 1):
+    all_times = []
+    all_v = []
+    all_u = []
 
-        # One RK45 step
+    t_current = T_START
+    state = [V0, U0]
+
+    while t_current < T_END:
+
         sol = solve_ivp(
-            fun=izhikevich_system,
-            t_span=(time[i], time[i+1]),
-            y0=[v[i], u[i]],
-            method="RK45",
-            t_eval=[time[i+1]]
+            lambda t, y: neuron_ode(t, y, I_ext),
+            (t_current, T_END),
+            state,
+            method="Radau",
+            events=lambda t, y: spike_event(t, y, I_ext),
+            rtol=1e-6,
+            atol=1e-9,
+            dense_output=True
         )
 
-        # Next values
-        v_next = sol.y[0, -1]
-        u_next = sol.y[1, -1]
-
-        # Spike reset
-        if v_next >= 35.0:
-            v[i] = 35.0      # spike peak for plotting
-            v_next = -50.0   # reset voltage
-            u_next += 100.0  # recovery jump
-
-        # Store
-        v[i+1] = v_next
-        u[i+1] = u_next
-
-    # Final dataset
-    ground_truth = np.column_stack(
-        (
-            time,
-            v,
-            u
+        t_segment = np.arange(
+            t_current,
+            sol.t[-1] + DT_EVAL,
+            DT_EVAL
         )
-    )
 
-    return ground_truth  
+        y_segment = sol.sol(t_segment)
+
+        all_times.extend(t_segment.tolist())
+        all_v.extend(y_segment[0].tolist())
+        all_u.extend(y_segment[1].tolist())
+
+        if len(sol.t_events[0]) == 0:
+            break
+
+        spike_time = sol.t_events[0][0]
+
+        all_times.append(spike_time)
+        all_v.append(v_peak)
+        all_u.append(sol.y_events[0][0][1])
+
+        v_reset = c
+        u_reset = sol.y_events[0][0][1] + d
+
+        state = [v_reset, u_reset]
+        t_current = spike_time
+
+    return pd.DataFrame({
+        "Time (ms)": all_times,
+        "v (mV)": all_v,
+        "w (pA)": all_u
+    })
+
+
+def make_u0_variations(v0):
+
+    u_ss = b * (v0 - v_r)
+
+    return [
+        u_ss - 40,
+        u_ss - 20,
+        u_ss,
+        u_ss + 20,
+        u_ss + 40
+    ]
+
+
+
 
 
 
@@ -150,39 +154,56 @@ def generate_ground_truth():
 # =====================================================
 if __name__ == "__main__":
 
-    ground_truth = generate_ground_truth()
+    I_values = np.arange(0.0, 500.0, 12.5)
+    V_values = np.arange(-85.0, -45.0, 2.0)
 
-    print("Ground truth shape:")
-    print(ground_truth.shape)
-
-    print("\nFirst 10 rows:")
-    print(ground_truth[:10])
-
-    # Save dataset
     data_dir = Path(__file__).resolve().parents[2] / "data"
     data_dir.mkdir(exist_ok=True)
 
-    np.savetxt(
-    data_dir / "ground_truth.csv",
-    ground_truth,
-    delimiter=",",
-    header="time,v,u",
-    comments=""
-)
+    output_file = data_dir / "ground_truth.csv"
 
-    print("\nDataset saved successfully.")
+    if output_file.exists():
+        output_file.unlink()
 
-    # Plot v(t)
-    plt.figure(figsize=(10,5))
+    header_written = False
+    sim_id = 1
 
-    plt.plot(
-        ground_truth[:,0],
-        ground_truth[:,1]
-    )
+    for I_ext in I_values:
 
-    plt.xlabel("Time (ms)")
-    plt.ylabel("Membrane Potential (mV)")
-    plt.title("Izhikevich Ground Truth using RK45")
+        print(f"Current = {I_ext}")
 
-    plt.grid()
-    plt.show()
+        for V0 in V_values:
+
+            for U0 in make_u0_variations(V0):
+
+                df = run_single_simulation(
+                    I_ext=I_ext,
+                    V0=V0,
+                    U0=U0
+                )
+
+                df.insert(0, "Sim_ID", sim_id)
+                df.insert(2, "I_ext (pA)", I_ext)
+
+                df = df[
+                    [
+                        "Sim_ID",
+                        "Time (ms)",
+                        "I_ext (pA)",
+                        "v (mV)",
+                        "w (pA)"
+                    ]
+                ]
+
+                df.to_csv(
+                    output_file,
+                    mode="a",
+                    index=False,
+                    header=not header_written
+                )
+
+                header_written = True
+                sim_id += 1
+
+    print("Finished")
+    print("Total simulations =", sim_id - 1)

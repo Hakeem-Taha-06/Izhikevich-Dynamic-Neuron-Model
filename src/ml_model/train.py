@@ -28,7 +28,7 @@ except ImportError:
     # Safe fallback configurations
     INITIAL_STATE = np.array([-60.0, 0.0])
     T_START, T_END, DT_EVAL = 0.0, 100.0, 0.01
-    I_EXT_DEFAULT = 500.0
+    I_EXT_DEFAULT = 300.0
     C_m, k, v_r, v_t, v_peak = 100.0, 0.7, -60.0, -40.0, 35.0
     a, b, c, d = 0.03, -2.0, -50.0, 100.0
 
@@ -67,17 +67,17 @@ def execute_ml_training_pipeline(
         raise FileNotFoundError(f"Missing ground truth data file at: {ground_truth_csv_path}")
 
     v_target = torch.tensor(df['v'].values, dtype=torch.float32).view(-1, 1)
-    u_target = torch.tensor(df['u'].values, dtype=torch.float32).view(-1, 1)
-    targets = torch.cat((v_target, u_target), dim=1)
+    w_target = torch.tensor(df['w'].values, dtype=torch.float32).view(-1, 1)
+    targets = torch.cat((v_target, w_target), dim=1)
 
     # ---- 3. Build the 4-Column Model Inputs ----
-    # Architecture expects: [t, I_ext, V_0, U_0] across all N rows
+    # Architecture expects: [t, I_ext, V_0, W_0] across all N rows
     I_ext_tensor = torch.full_like(t_tensor, I_EXT_DEFAULT)
     V_0_tensor = torch.full_like(t_tensor, INITIAL_STATE[0])
-    U_0_tensor = torch.full_like(t_tensor, INITIAL_STATE[1])
+    W_0_tensor = torch.full_like(t_tensor, INITIAL_STATE[1])
     
     # Combine them to match the exact input interface contract of Role 8
-    model_inputs = torch.cat([t_tensor, I_ext_tensor, V_0_tensor, U_0_tensor], dim=1)
+    model_inputs = torch.cat([t_tensor, I_ext_tensor, V_0_tensor, W_0_tensor], dim=1)
 
     # ---- 4. Optimization Setup ----
     model = IzhikevichPINN()
@@ -102,11 +102,11 @@ def execute_ml_training_pipeline(
         # 3. Compute Physics ODE Residual Loss with Curriculum Schedule Margin
         margin = get_margin(epoch, epochs)
         loss_phys = compute_physics_loss(
-            model, t_tensor, I_ext_tensor, V_0_tensor, U_0_tensor, peak_margin=margin
+            model, t_tensor, I_ext_tensor, V_0_tensor, W_0_tensor, peak_margin=margin
         )
         
         # 4. Compute Initial Condition Anchor Loss
-        loss_ic = compute_ic_loss(model, I_ext_tensor, V_0_tensor, U_0_tensor)
+        loss_ic = compute_ic_loss(model, I_ext_tensor, V_0_tensor, W_0_tensor)
         
         # 5. Combine everything into Total Loss Balance
         total_loss = loss_data + (lambda_phys * loss_phys) + (lambda_ic * loss_ic)
@@ -131,12 +131,12 @@ def execute_ml_training_pipeline(
     with torch.no_grad():
         # Call the trajectory helper built inside architecture.py by Role 8
         final_trajectory_tensor = predict_trajectory(
-            model, t_tensor, I_ext_tensor, V_0_tensor, U_0_tensor
+            model, t_tensor, I_ext_tensor, V_0_tensor, W_0_tensor
         )
         # Convert output from PyTorch matrix back to NumPy array
         results = final_trajectory_tensor.numpy()
 
-    # Returns the strict project interface rule shape (N, 3) ordered as [Time, v, u]
+    # Returns the strict project interface rule shape (N, 3) ordered as [Time, v, w]
     return results
 
 
@@ -149,7 +149,7 @@ if __name__ == "__main__":
     df_mock = pd.DataFrame({
         'time': test_t,
         'v': np.sin(test_t / 10.0) * 15 - 55,  
-        'u': np.cos(test_t / 10.0) * 2 - 10
+        'w': np.cos(test_t / 10.0) * 2 - 10
     })
     df_mock.to_csv(mock_csv, index=False)
     
@@ -163,7 +163,7 @@ if __name__ == "__main__":
         )
         print("\n🟢 SUCCESS! Training Loop executed cleanly.")
         print(f"Output Matrix Shape: {output.shape} -> Expected (N, 3)")
-        print(f"First data sample row [Time, v, u]: {output[0]}")
+        print(f"First data sample row [Time, v, w]: {output[0]}")
     finally:
         if os.path.exists(mock_csv):
             os.remove(mock_csv)

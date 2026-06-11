@@ -2,9 +2,9 @@
 
 Model Reference:
     Izhikevich (2007) generalized biophysical model:
-        C_m * dv/dt = k*(v - v_r)*(v - v_t) - u + I_ext
-        du/dt       = a*{ b*(v - v_r) - u }
-        if v >= v_peak:  v <- c,  u <- u + d
+        C_m * dv/dt = k*(v - v_r)*(v - v_t) - w + I_ext
+        dw/dt       = a*{ b*(v - v_r) - w }
+        if v >= v_peak:  v <- c,  w <- w + d
 
 Role mapping:
 - Role 8: architecture.py
@@ -18,6 +18,6 @@ Expected `config.py` imports:
 - `T_START`, `T_END`, `DT_EVAL`, `I_EXT_DEFAULT`
 
 Output interface rule:
-All numerical and ML predictive outputs must return `numpy.ndarray` of shape `(N, 3)` ordered as `[Time, v, u]`.
+All numerical and ML predictive outputs must return `numpy.ndarray` of shape `(N, 3)` ordered as `[Time, v, w]`.
 
 This package contains documentation-only stubs in this scaffold."""

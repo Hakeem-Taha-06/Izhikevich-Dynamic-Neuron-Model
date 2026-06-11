@@ -1,8 +1,8 @@
 """
 Numerical solvers subpackage.
 Provides reference solvers for the Izhikevich model (2007 generalized form):
-    C_m * dv/dt = k*(v - v_r)*(v - v_t) - u + I_ext
-    du/dt       = a*{ b*(v - v_r) - u }
+    C_m * dv/dt = k*(v - v_r)*(v - v_t) - w + I_ext
+    dw/dt       = a*{ b*(v - v_r) - w }
 
 Modules:
 - Ground truth generator

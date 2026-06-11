@@ -6,11 +6,11 @@ Welcome to the **Izhikevich Dynamic Neuron Model** repository. This project is a
 
 **Governing Equations (2007 Generalized Biophysical Form):**
 
-$$C_m \frac{dv}{dt} = k(v - v_r)(v - v_t) - u + I_{ext}$$
+$$C_m \frac{dv}{dt} = k(v - v_r)(v - v_t) - w + I_{ext}$$
 
-$$\frac{du}{dt} = a\{ b(v - v_r) - u \}$$
+$$\frac{dw}{dt} = a\{ b(v - v_r) - w \}$$
 
-**After-spike reset:** If $v \ge v_{peak}$, then $v \leftarrow c$, $u \leftarrow u + d$.
+**After-spike reset:** If $v \ge v_{peak}$, then $v \leftarrow c$, $w \leftarrow w + d$.
 
 ---
 
@@ -83,9 +83,9 @@ Each role has a `.md` notes file alongside their `.py` file. **You must fill in 
 **ALL numerical methods and AI models must strictly adhere to the following output format:**
 
 - **Return Type:** NumPy array of shape `(N, 3)`
-- **Column Order:** `[Time, v, u]`
+- **Column Order:** `[Time, v, w]`
   1. `Time` (ms)
   2. `v` (membrane potential in mV)
-  3. `u` (recovery variable in pA)
+  3. `w` (recovery variable in pA)
 
-*Note: The discrete reset (If v >= v_peak, then v ← c, u ← u + d) must be correctly enforced in all numerical methods except Role 4, which handles segmented integration.*
+*Note: The discrete reset (If v >= v_peak, then v ← c, w ← w + d) must be correctly enforced in all numerical methods except Role 4, which handles segmented integration.*
