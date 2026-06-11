@@ -1,3 +1,21 @@
+<<<<<<< HEAD
+
+### Backward Euler Complexity Report
+
+| Metric | Value |
+| :--- | :--- |
+| **Total Execution Time** | 2.3274 seconds |
+| **Number of Steps** | 10001 |
+| **Average Time per Step** | 0.232720 ms |
+| **Memory Usage (Result Array)** | 0.3815 MB |
+| **Peak Process Memory (RSS)** | 80.9648 MB |
+| **Time Complexity** | O(N * I) where N is steps, I is fsolve iterations |
+| **Space Complexity** | O(N * D) where N is steps, D is state dimensions (4+1) |
+
+**Notes:**
+- The implicit nature requires a root-finding iteration (`fsolve`) at each step.
+- Stability is maintained even for large `dt`, unlike explicit methods.
+=======
 # Role 6: Backward Euler — Method Documentation & Analysis
 
 **File:** `src/numerical/backward_euler.py`  
@@ -206,3 +224,4 @@ def solve_backward_euler(
 2. Ascher, U. M., & Petzold, L. R. (1998). *Computer Methods for Ordinary Differential Equations and Differential-Algebraic Equations*. SIAM. — Chapter 4 (Stiff problems & implicit methods).  
 3. Schiesser, W. E. (2014). *Differential Equation Analysis in Biomedical Science and Engineering*. Wiley.  
 4. SciPy documentation: [`scipy.optimize.fsolve`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.fsolve.html).
+>>>>>>> ceea7d019dacfa036768f68e837af0e61d729ffd
