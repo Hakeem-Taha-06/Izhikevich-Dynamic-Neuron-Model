@@ -45,6 +45,7 @@ Constraints
 
 from scipy.integrate import solve_ivp
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import sys
 from pathlib import Path
@@ -140,6 +141,7 @@ def generate_ground_truth():
             u
         )
     )
+    
 
     return ground_truth  
 
@@ -162,27 +164,32 @@ if __name__ == "__main__":
     data_dir = Path(__file__).resolve().parents[2] / "data"
     data_dir.mkdir(exist_ok=True)
 
-    np.savetxt(
+    df = pd.DataFrame({
+    "Sim_ID": np.ones(len(ground_truth), dtype=int),
+    "Time (ms)": ground_truth[:, 0],
+    "I_ext (pA)": np.full(len(ground_truth), I_EXT_DEFAULT),
+    "v (mV)": ground_truth[:, 1],
+    "u (pA)": ground_truth[:, 2]
+})
+
+df.to_csv(
     data_dir / "ground_truth.csv",
-    ground_truth,
-    delimiter=",",
-    header="time,v,u",
-    comments=""
+    index=False
 )
 
-    print("\nDataset saved successfully.")
+print("\nDataset saved successfully.")
 
-    # Plot v(t)
-    plt.figure(figsize=(10,5))
+# Plot v(t)
+plt.figure(figsize=(10,5))
 
-    plt.plot(
-        ground_truth[:,0],
-        ground_truth[:,1]
-    )
+plt.plot(
+    ground_truth[:,0],
+    ground_truth[:,1]
+)
 
-    plt.xlabel("Time (ms)")
-    plt.ylabel("Membrane Potential (mV)")
-    plt.title("Izhikevich Ground Truth using RK45")
+plt.xlabel("Time (ms)")
+plt.ylabel("Membrane Potential (mV)")
+plt.title("Izhikevich Ground Truth using RK45")
 
-    plt.grid()
-    plt.show()
+plt.grid()
+plt.show()
