@@ -236,7 +236,6 @@ __marimo__/
 # Project Generated Outputs
 # ==============================================================================
 # Ignore generated data CSVs, but keep the directory using .gitkeep
-data/*.csv
 !data/.gitkeep
 
 # Ignore generated figures, but keep the directory and its README
