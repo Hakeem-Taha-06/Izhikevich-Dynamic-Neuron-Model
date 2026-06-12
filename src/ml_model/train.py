@@ -41,8 +41,8 @@ try:
 except ImportError:
     # Safe fallback configurations
     INITIAL_STATE = np.array([-60.0, 0.0])
-    T_START, T_END, DT_EVAL = 0.0, 100.0, 0.01
-    I_EXT_DEFAULT = 500.0
+    T_START, T_END, DT_EVAL = 0.0, 1000.0, 0.01
+    I_EXT_DEFAULT = 70.0
     C_m, k, v_r, v_t, v_peak = 100.0, 0.7, -60.0, -40.0, 35.0
     a, b, c, d = 0.03, -2.0, -50.0, 100.0
 

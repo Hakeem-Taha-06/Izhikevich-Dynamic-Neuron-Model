@@ -47,7 +47,7 @@ if _ROOT not in sys.path:
 from config import (
     INITIAL_STATE,
     T_START, T_END, DT_EVAL,
-    I_EXT_DEFAULT,
+    I_EXT_DEFAULT, I_ext_fn,
     v_peak, c, d,
     dv_dt, dw_dt,
 )
@@ -57,12 +57,14 @@ from config import (
 # Public solver
 # ---------------------------------------------------------------------------
 
-def solve_backward_euler(y0=None, t_span=None, dt=None, I_ext=None):
+def solve_backward_euler(y0=None, t_span=None, dt=None):
     """Integrate the Izhikevich model with the implicit Backward Euler method.
+
+    Uses the step-current protocol I_ext_fn(t) from config.py.
 
     At every time step the implicit system
 
-        v_{n+1} = v_n + dt * dv_dt(v_{n+1}, u_{n+1}, I_ext)
+        v_{n+1} = v_n + dt * dv_dt(v_{n+1}, u_{n+1}, I_ext(t_{n+1}))
         u_{n+1} = w_n + dt * dw_dt(v_{n+1}, u_{n+1})
 
     is solved for (v_{n+1}, u_{n+1}) using scipy.optimize.fsolve.
@@ -80,8 +82,6 @@ def solve_backward_euler(y0=None, t_span=None, dt=None, I_ext=None):
         Simulation window in ms. Defaults to (T_START, T_END).
     dt : float, optional
         Integration time step in ms. Defaults to DT_EVAL.
-    I_ext : float, optional
-        Constant external current in pA. Defaults to I_EXT_DEFAULT.
 
     Returns
     -------
@@ -102,11 +102,6 @@ def solve_backward_euler(y0=None, t_span=None, dt=None, I_ext=None):
         dt = float(DT_EVAL)
     else:
         dt = float(dt)
-
-    if I_ext is None:
-        I_ext = float(I_EXT_DEFAULT)
-    else:
-        I_ext = float(I_ext)
 
     # ── 2. Build uniform time grid ────────────────────────────────────────
     t_values = np.arange(t_start, t_end + dt * 0.5, dt)
@@ -131,7 +126,8 @@ def solve_backward_euler(y0=None, t_span=None, dt=None, I_ext=None):
         def _residual(y_next):
             """G(y_next) = 0  <=>  implicit BE equations."""
             v_n, w_n = y_next
-            res_v = v_n - vc - dt * dv_dt(v_n, w_n, I_ext)
+            I_t = float(I_ext_fn(t_values[i]))
+            res_v = v_n - vc - dt * dv_dt(v_n, w_n, I_t)
             res_w = w_n - wc - dt * dw_dt(v_n, w_n)
             return np.array([res_v, res_w])
 

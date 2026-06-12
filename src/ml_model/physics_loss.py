@@ -56,10 +56,10 @@ from config import C_m, k, v_r, v_t, v_peak, a, b, c, d, I_EXT_DEFAULT
 # total physics loss.
 #
 # DV_RATE: the voltage rate driven by external current alone at rest
-#          = I_EXT_DEFAULT / C_m = 300 / 100 = 3.0 mV/ms
+#          = I_EXT_DEFAULT / C_m = 70 / 100 = 0.7 mV/ms
 # DW_RATE: the recovery rate after a spike (w jumps by d, then decays)
 #          = a * |d| = 0.03 * 100 = 3.0 pA/ms
-DV_RATE = I_EXT_DEFAULT / C_m       # 3.0  mV/ms
+DV_RATE = I_EXT_DEFAULT / C_m       # 0.7  mV/ms
 DW_RATE = a * abs(d)                # 3.0  pA/ms
 
 

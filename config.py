@@ -55,11 +55,24 @@ INITIAL_STATE = np.array([V_0, W_0])
 # 3. SIMULATION SETTINGS
 # ==========================================
 T_START = 0.0
-T_END = 100.0
+T_END = 1000.0
 DT_EVAL = 0.01    # Required resolution for the Ground Truth dataset
 
 # Default External Current (pA)
-I_EXT_DEFAULT = 300.0  
+# Step-current protocol: 0 pA for the first T_STIM_ONSET ms,
+# then I_EXT_DEFAULT for the remainder of the simulation.
+I_EXT_DEFAULT = 70.0
+T_STIM_ONSET = 100.0   # Stimulus onset time (ms)
+
+
+def I_ext_fn(t):
+    """Step-current stimulus function.
+
+    Returns 0.0 for t < T_STIM_ONSET and I_EXT_DEFAULT for t >= T_STIM_ONSET.
+    Accepts a scalar or numpy array.
+    """
+    import numpy as _np
+    return _np.where(_np.asarray(t) >= T_STIM_ONSET, I_EXT_DEFAULT, 0.0)
 
 # ==========================================
 # 4. SHARED ODE FUNCTIONS
