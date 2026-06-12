@@ -167,3 +167,78 @@ L_total = L_data + λ_phys · L_physics + λ_ic · L_ic
 | `compute_physics_loss()` | model, `t` (requires_grad), `I_ext, V_0, W_0`, `peak_margin` | scalar tensor | Training loop (Role 10) |
 | `compute_ic_loss()` | model, `I_ext_0, V_0, W_0` | scalar tensor | Training loop (Role 10) |
 | `get_margin()` | `epoch, max_epochs` | float | Training loop (Role 10) |
+
+---
+
+## 6. Training Loop Design (`train.py`)
+
+### 6.1 Data Ingestion — `IzhikevichDataset`
+
+**Problem:** The ground truth CSV from Role 4 contains ~4,000 simulations (40 `I_ext` × 20 `V_0` × 5 `W_0`), each with ~10,001 time steps — roughly 40 million rows total. The network's input contract requires per-row `[t, I_ext, V_0, W_0]`, where `V_0` and `W_0` are the initial conditions of the *parent simulation*, not the current row's `v`/`w`.
+
+**Decision:** A custom `IzhikevichDataset(Dataset)` class handles the multi-simulation structure:
+
+1. Reads the full CSV with columns `Sim_ID | Time (ms) | I_ext (pA) | v (mV) | w (pA)`
+2. Groups by `Sim_ID`, extracts the first time-step's `v` and `w` as that simulation's `V_0` and `W_0`
+3. Merges the initial conditions back onto every row
+4. Pre-converts all columns to tensors at construction time (fast `__getitem__`)
+
+This ensures that every row gets its correct initial conditions rather than broadcasting a single `INITIAL_STATE` across the entire dataset.
+
+### 6.2 Two-Phase Optimisation
+
+**Decision:** The training pipeline uses two phases, following standard PINN practice:
+
+| Phase | Optimiser | Epochs | Batch strategy | Purpose |
+|---|---|---|---|---|
+| 1 | Adam | 4,000 | Mini-batch (`DataLoader`, 4096/batch) | Fast initial convergence — SGD noise helps escape local minima in the early loss landscape |
+| 2 | L-BFGS | 1,000 | Full-batch (random 16K-point sample) | Precise refinement — quasi-Newton method exploits second-order curvature to polish the solution |
+
+**Why not Adam alone?** Adam converges quickly to a rough solution but plateaus. L-BFGS uses Hessian approximations to find sharper minima, which is critical for PINNs where the physics residual requires high precision.
+
+**Why not L-BFGS alone?** L-BFGS is deterministic and can get trapped in poor local minima early on. Adam's stochastic mini-batches provide implicit regularisation that helps find a better basin first.
+
+### 6.3 Mini-Batching (Phase 1)
+
+**Problem:** The full dataset (~40M rows) cannot fit in a single forward pass without exhausting GPU memory.
+
+**Decision:** Use `torch.utils.data.DataLoader` with `batch_size=4096` and `shuffle=True`. Each batch independently computes:
+
+```
+L_batch = L_data + λ_phys · L_physics + λ_ic · L_ic
+```
+
+A critical detail: `t` must be cloned and have `requires_grad_(True)` set **per batch**, because the DataLoader's collated tensors are leaf tensors without gradient tracking. Without this, `torch.autograd.grad` inside `compute_physics_loss` would return `None`.
+
+### 6.4 L-BFGS Mechanics (Phase 2)
+
+**Problem:** L-BFGS is a full-batch optimiser — it requires the same data across multiple closure evaluations within a single `.step()`. The full dataset is too large.
+
+**Decision:** Draw a fixed random sample of 16,384 points from the dataset and reuse it for all L-BFGS epochs.
+
+The closure function (called up to `max_iter=20` times per step by the line search):
+
+1. Zeros gradients
+2. Computes forward pass on the fixed sample
+3. Computes `L_data + λ_phys · L_physics + λ_ic · L_ic`
+4. Calls `.backward()` to populate parameter gradients
+5. Returns the scalar loss (required by L-BFGS for Wolfe conditions)
+
+`line_search_fn="strong_wolfe"` ensures sufficient decrease and curvature conditions are met, preventing L-BFGS from taking excessively large or small steps.
+
+### 6.5 Hyperparameter Defaults
+
+| Parameter | Default | Rationale |
+|---|---|---|
+| `adam_epochs` | 4,000 | ~80% of total budget for exploration |
+| `lbfgs_epochs` | 1,000 | ~20% for refinement |
+| `batch_size` | 4,096 | Balances GPU utilisation vs gradient noise |
+| `lr_adam` | 1e-3 | Standard Adam learning rate |
+| `lr_lbfgs` | 1.0 | L-BFGS internally manages step size via line search; lr=1.0 is the standard default |
+| `lbfgs_sample_size` | 16,384 | Large enough for representative coverage, small enough for memory |
+| `λ_phys` | 0.01 | From Section 4 analysis |
+| `λ_ic` | 1.0 | From Section 4 analysis |
+
+### 6.6 Final Inference
+
+After training, `model.eval()` is called and `predict_trajectory()` generates the default trajectory (`I_EXT_DEFAULT`, `INITIAL_STATE`) inside `torch.no_grad()`. The result is converted to a `numpy.ndarray` of shape `(N, 3)` ordered as `[Time, v, w]`, matching the project-wide output contract.
