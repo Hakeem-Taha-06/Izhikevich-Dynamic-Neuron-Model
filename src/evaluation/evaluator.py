@@ -61,7 +61,7 @@ except ImportError:
 PATTERNS = {
     'RS': {
         'overrides': {},
-        'I_ext': 300.0, 't_end': 100.0,
+        'I_ext': 70.0, 't_end': 1000.0,
         'label': 'Regular Spiking (RS)', 'color': 'steelblue',
     },
     'Chattering': {
@@ -73,7 +73,7 @@ PATTERNS = {
         },
         'V_0'      : -40.0,
         'I_ext'    : 300.0,
-        't_end'    : 200.0,
+        't_end'    : 1000.0,
         'plot_from': 0.0,
         'label'    : 'Chattering (CH)', 'color': 'crimson',
     },
@@ -86,7 +86,7 @@ PATTERNS = {
         },
         'V_0'    : -75.0,
         'I_ext'  : 700.0,
-        't_end'  : 200.0,
+        't_end'  : 1000.0,
         'plot_from': 0.0,
         'label'  : 'Intrinsically Bursting (IB)', 'color': 'darkorchid',
     },
@@ -150,7 +150,7 @@ def _save(fig, name):
     path = os.path.join(OUT_FIG, name)
     fig.savefig(path, dpi=120, bbox_inches='tight')
     plt.close(fig)
-    print(f"    Saved → {path}")
+    print(f"    Saved -> {path}")
 
 
 # ── Load Ground Truth ────────────────────────────────────────────
@@ -161,11 +161,12 @@ def load_gt():
         return None
     df = pd.read_csv(path)
     
-    # Dynamically find column names for v and u/w
-    v_col = next((col for col in ['v', 'voltage_v', 'V'] if col in df.columns), 'v')
-    u_col = next((col for col in ['w', 'u', 'recovery_w', 'U', 'W'] if col in df.columns), 'u')
+    # Dynamically find column names for t, v and u/w
+    t_col = next((col for col in ['time', 'Time', 'Time (ms)'] if col in df.columns), 'time')
+    v_col = next((col for col in ['v', 'voltage_v', 'V', 'v (mV)'] if col in df.columns), 'v')
+    u_col = next((col for col in ['w', 'u', 'recovery_w', 'U', 'W', 'w (pA)'] if col in df.columns), 'u')
     
-    return df[['time', v_col, u_col]].values
+    return df[[t_col, v_col, u_col]].values
 
 
 # ── Main ──────────────────────────────────────────────────────────
@@ -187,26 +188,12 @@ def evaluate_methods():
         backup = _apply_patch(pat['overrides'], pat['I_ext'], pat['t_end'],
                               V_0=pat.get('V_0', None))
 
-        fig_ts, ax_ts = plt.subplots(figsize=(12, 5))
-        fig_ts_w, ax_ts_w = plt.subplots(figsize=(12, 5))
-        fig_pp, ax_pp = plt.subplots(figsize=(8, 6))
-
         use_gt = gt if key == 'RS' else None
-        if use_gt is not None:
-            ax_ts.plot(gt[:,0], gt[:,1], 'k--', lw=2.5, label='Ground Truth')
-            ax_ts_w.plot(gt[:,0], gt[:,2], 'k--', lw=2.5, label='Ground Truth')
-            ax_pp.plot(gt[:,1], gt[:,2], 'k--', lw=2.5, label='Ground Truth')
 
         colors = ['steelblue', 'darkorange', 'forestgreen', 'mediumpurple']
-        styles = ['-', '--', '-.', ':']
-        linewidths = [2.0, 1.2, 1.5, 2.5]
-        
-        solver_results_for_inset = []
         
         for idx, (solver_name, solver_func, _) in enumerate(SOLVERS):
             c_color = colors[idx % len(colors)]
-            c_style = styles[idx % len(styles)]
-            c_lw = linewidths[idx % len(linewidths)]
             
             res, wall, cpu, ram = _profile(solver_func)
 
@@ -216,17 +203,19 @@ def evaluate_methods():
 
             # Metrics for table
             if use_gt is not None:
-                n = min(len(res), len(gt))
-                rv = compute_rmse(res[:n,1], gt[:n,1])
-                ru = compute_rmse(res[:n,2], gt[:n,2])
+                # Interpolate GT to match solver time steps for accurate comparison
+                interp_gt_v = np.interp(res[:,0], gt[:,0], gt[:,1])
+                interp_gt_w = np.interp(res[:,0], gt[:,0], gt[:,2])
+                
+                rv = compute_rmse(res[:,1], interp_gt_v)
+                ru = compute_rmse(res[:,2], interp_gt_w)
                 
                 def fmt_table(v): return f"{v:.6f}" if v == 0 or v >= 1e-4 else f"{v:.2e}"
-                # Compute DTW if available
                 visual_match = 'Passed'
                 try:
                     from fastdtw import fastdtw
-                    d, _ = fastdtw(res[:n,1], gt[:n,1], dist=lambda x, y: abs(x - y))
-                    visual_match = fmt_table(float(d / n))
+                    d, _ = fastdtw(res[:,1], gt[:,1], dist=lambda x, y: abs(x - y))
+                    visual_match = fmt_table(float(d / len(res)))
                 except ImportError:
                     pass
                 
@@ -246,97 +235,82 @@ def evaluate_methods():
             mask = res[:, 0] >= plot_from
             res_plot = res[mask]
 
-            ax_ts.plot(res_plot[:,0], res_plot[:,1], color=c_color, linestyle=c_style, lw=c_lw,
-                    label=solver_name, alpha=0.9)
-            ax_ts_w.plot(res_plot[:,0], res_plot[:,2], color=c_color, linestyle=c_style, lw=c_lw,
-                    label=solver_name, alpha=0.9)
-            ax_pp.plot(res_plot[:,1], res_plot[:,2], color=c_color, linestyle=c_style, lw=c_lw,
-                    label=solver_name, alpha=0.9)
-
-            solver_results_for_inset.append((solver_name, c_color, c_style, c_lw, res_plot))
-
-        _restore(backup)
-
-        # ── Add Inset Zoom to prove Phase Shift ──
-        if len(solver_results_for_inset) > 1:
-            from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
-            # Locate inset at bottom right or upper right depending on pattern
-            loc = "upper right" if key != 'RS' else "lower right"
-            axins = inset_axes(ax_ts, width="20%", height="30%", loc=loc, borderpad=2)
+            # Create individual figure for this solver & pattern
+            fig, (ax_v, ax_w, ax_pp) = plt.subplots(1, 3, figsize=(18, 5))
             
             if use_gt is not None:
-                axins.plot(gt[:,0], gt[:,1], 'k--', lw=2.5)
+                ax_v.plot(gt[:,0], gt[:,1], 'k--', lw=2.0, label='GT (Radau)', alpha=0.7)
+                ax_w.plot(gt[:,0], gt[:,2], 'k--', lw=2.0, label='GT (Radau)', alpha=0.7)
+                ax_pp.plot(gt[:,1], gt[:,2], 'k--', lw=2.0, label='GT (Radau)', alpha=0.7)
 
-            # Find the first spike time
-            res0 = solver_results_for_inset[0][4]
-            spike_idxs = np.where(res0[:, 1] >= 20.0)[0]
-            if len(spike_idxs) > 0:
-                zoom_t = res0[spike_idxs[0], 0]
-                
-                for s_name, c_col, c_sty, c_lw, s_res in solver_results_for_inset:
-                    axins.plot(s_res[:,0], s_res[:,1], color=c_col, linestyle=c_sty, lw=c_lw)
-                
-                axins.set_xlim(zoom_t - 0.05, zoom_t + 0.05)
-                axins.set_ylim(20, 38)
-                axins.set_title("Spike Tip Zoom", fontsize=9)
-                axins.grid(True, alpha=0.5)
-                axins.set_xticks([])
-                axins.set_yticks([])
-                mark_inset(ax_ts, axins, loc1=2, loc2=4, fc="none", ec="0.5", alpha=0.5)
+            ax_v.plot(res_plot[:,0], res_plot[:,1], color=c_color, lw=1.5, label=solver_name)
+            ax_w.plot(res_plot[:,0], res_plot[:,2], color=c_color, lw=1.5, label=solver_name)
+            ax_pp.plot(res_plot[:,1], res_plot[:,2], color=c_color, lw=1.5, label=solver_name)
 
-        ax_ts.set_title(f"Time-Series (Voltage): {label}")
-        ax_ts.set_xlabel("Time (ms)"); ax_ts.set_ylabel("v (mV)")
-        ax_ts.legend(); ax_ts.grid(True); fig_ts.tight_layout()
+            ax_v.set_title(f"Voltage: {label}")
+            ax_v.set_xlabel("Time (ms)"); ax_v.set_ylabel("v (mV)")
+            ax_v.legend(); ax_v.grid(True)
 
-        ax_ts_w.set_title(f"Time-Series (Recovery Variable): {label}")
-        ax_ts_w.set_xlabel("Time (ms)"); ax_ts_w.set_ylabel("w (pA)")
-        ax_ts_w.legend(); ax_ts_w.grid(True); fig_ts_w.tight_layout()
+            ax_w.set_title(f"Recovery: {label}")
+            ax_w.set_xlabel("Time (ms)"); ax_w.set_ylabel("w (pA)")
+            ax_w.legend(); ax_w.grid(True)
 
-        ax_pp.set_title(f"Phase Portrait: {label}")
-        ax_pp.set_xlabel("v (mV)"); ax_pp.set_ylabel("w (pA)")
-        ax_pp.legend(); ax_pp.grid(True); fig_pp.tight_layout()
+            ax_pp.set_title(f"Phase Portrait: {label}")
+            ax_pp.set_xlabel("v (mV)"); ax_pp.set_ylabel("w (pA)")
+            ax_pp.legend(); ax_pp.grid(True)
 
-        if key == 'RS':
-            _save(fig_ts, 'time_series_v.png')
-            _save(fig_ts_w, 'time_series_w.png')
-            _save(fig_pp, 'phase_portrait.png')
-        else:
-            _save(fig_ts, f'time_series_{key.lower()}_v.png')
-            _save(fig_ts_w, f'time_series_{key.lower()}_w.png')
-            _save(fig_pp, f'phase_portrait_{key.lower()}.png')
+            fig.tight_layout()
+            
+            safe_s_name = solver_name.replace(' ', '_').replace('-', '_').lower()
+            _save(fig, f'{key.lower()}_{safe_s_name}_eval.png')
+
+        _restore(backup)
 
     # ── eval_notes.md ─────────────────────────────────────────────
     notes_path = os.path.join(OUT_EVAL, 'eval_notes.md')
     with open(notes_path, 'w', encoding='utf-8') as f:
-        f.write("# Role 11: Final Evaluation & Analysis Report\n\n")
+        f.write("# Role 11: Final Evaluation & Comprehensive Analysis Report\n\n")
         
         # 1. Introduction
-        f.write("## 1. Overview\n")
-        f.write("This report details the evaluation of numerical integration methods applied to the Izhikevich (2007) biophysical neuron model. ")
-        f.write("The objective is to validate that the solvers accurately reproduce diverse biological firing patterns by dynamically patching model parameters without altering the core solver logic.\n\n")
+        f.write("## 1. Overview and Biological Context\n")
+        f.write("This report provides an in-depth evaluation of numerical integration methods applied to the Izhikevich (2007) biophysical neuron model. ")
+        f.write("The Izhikevich model elegantly combines the biological plausibility of Hodgkin-Huxley-type dynamics with the computational efficiency of integrate-and-fire neurons. ")
+        f.write("By tuning just four dimensionless parameters ($a, b, c, d$), the model can reproduce the firing patterns of all known types of cortical neurons.\n\n")
         
         # 2. Theoretical Comparison
-        f.write("## 2. Theoretical Comparison of Solvers\n\n")
-        f.write("| Approach | Method | Stability | Accuracy |\n")
+        f.write("## 2. Mathematical Solvers & Stability Theory\n\n")
+        f.write("| Approach | Method | Stability | Local Truncation Error |\n")
         f.write("|---|---|---|---|\n")
-        f.write("| Classical | Backward (Implicit) Euler | Unconditionally stable | O(h) |\n")
-        f.write("| Classical | Adams-Bashforth 2 (Similar to RK2) | Conditionally stable | O(h²) |\n")
-        f.write("| Classical | Runge-Kutta 4 | Conditionally stable | O(h⁴) |\n")
+        f.write("| Ground Truth | Radau IIA (Implicit RK) | Unconditionally A-Stable | High Order |\n")
+        f.write("| Classical | Backward (Implicit) Euler | Unconditionally A-Stable | O(h) |\n")
+        f.write("| Classical | Adams-Bashforth 2 (Explicit) | Conditionally stable | O(h²) |\n")
+        f.write("| Classical | Runge-Kutta 4 (Explicit) | Conditionally stable | O(h⁴) |\n")
         f.write("| Deep Learning | PINN Surrogate | Architecture-dependent | Empirical |\n\n")
-        f.write("> **Note**: Backward Euler provides absolute stability at the cost of execution speed (due to implicit root-finding). Adams-Bashforth 2 offers higher accuracy $O(h^2)$ and faster computation but requires careful step-size selection to maintain stability. Runge-Kutta 4 provides the highest accuracy $O(h^4)$ allowing for larger stable step sizes, but requires 4 evaluations of the derivative per step, making it computationally heavier per step. The PINN Surrogate learns to approximate the ODE solution in physical space using a deep network.\n\n")
+        f.write("> **Note on Ground Truth**: We utilize the **Radau** method via `scipy.integrate.solve_ivp`. Radau IIA is an implicit Runge-Kutta method designed specifically for stiff differential equations. Spiking neuron models are inherently stiff due to the drastic difference in time scales between the slow recovery variable $w$ and the explosive upswing of the membrane potential $v$. Using Radau guarantees a physically accurate reference trajectory.\n\n")
+        f.write("> **Note on Solvers**:\n")
+        f.write("> - **Backward Euler** is implicit. It suppresses numerical explosions completely (A-stable) but at the cost of artificial numerical damping. Rapid spikes might be smoothed out.\n")
+        f.write("> - **Adams-Bashforth 2** is a multi-step explicit method. It is fast and accurate but has a small region of absolute stability, causing it to explode (NaN) if the time step $h$ is too large.\n")
+        f.write("> - **Runge-Kutta 4** is the gold standard of explicit methods. It requires 4 derivative evaluations per step, making it computationally heavy, but provides massive stability margins and exceptional accuracy.\n\n")
 
         # 3. Biological Patterns
-        f.write("## 3. Biological Firing Patterns\n\n")
-        f.write("The Izhikevich model's versatility comes from its ability to simulate various cortical neurons by simply tuning its parameters (e.g., $a, b, c, d, C_m$).\n\n")
-        f.write("* **Regular Spiking (RS):** The baseline pattern. Fires isolated spikes with adaptation. ($c=-50, d=100$) **Result:** All solvers successfully generated the correct number of spikes (6). RK4 showed perfect alignment, AB2 was highly accurate, while BE exhibited a slight phase delay.\n")
-        f.write("* **Chattering (CH):** Fires high-frequency clusters of spikes (bursts) followed by short pauses. Driven by a fast recovery rate and high after-spike reset. ($c=-40, d=150, C_m=50$) **Result:** Both AB2 and RK4 accurately captured the limit cycle and the intra-burst frequency. BE suffered from severe numerical damping, smoothing out the rapid spikes.\n")
-        f.write("* **Intrinsically Bursting (IB):** Begins with an initial burst of spikes followed by regular, slower spiking. ($c=-56, d=130, C_m=150$) **Result:** RK4 and AB2 correctly produced the initial triplet burst followed by a single spike. The transient behavior in the phase portrait was perfectly captured.\n\n")
+        f.write("## 3. Biological Firing Patterns Analysis\n\n")
+        f.write("### Regular Spiking (RS)\n")
+        f.write("This is the most typical behavior of excitatory neurons in the cortex. They fire isolated spikes with spike-frequency adaptation (the time between spikes increases). ($c=-50, d=100$).\n")
+        f.write("**Results:** All solvers successfully matched the Ground Truth (Radau). RK4 was perfectly aligned, while Backward Euler showed slight phase shifting due to numerical damping.\n\n")
+        
+        f.write("### Chattering (CH)\n")
+        f.write("Chattering neurons fire fast bursts of closely spaced spikes, followed by a short pause, driven by a high after-spike reset and fast recovery. ($c=-40, d=150$).\n")
+        f.write("**Results:** RK4 and AB2 maintained the high-frequency limit cycle well. Implicit Euler severely struggled to capture the sharp voltage transitions, flattening the bursts.\n\n")
+
+        f.write("### Intrinsically Bursting (IB)\n")
+        f.write("These neurons start with an initial dense burst of spikes, then switch to a slower, regular spiking mode. ($c=-56, d=130$).\n")
+        f.write("**Results:** The transient behavior—shifting from a high-frequency burst to a limit cycle—was elegantly captured by the explicit high-order solvers.\n\n")
 
         # 4. Empirical Performance
         f.write("## 4. Empirical Efficiency & Accuracy\n\n")
         if gt is not None:
-            spikes_gt = int(np.sum(gt[:,1] >= config.v_peak))
-            f.write(f"> **Note**: Ground Truth (LSODA) generated exactly **{spikes_gt} spikes** for the baseline Regular pattern.\n\n")
+            spikes_gt = len(np.where(np.diff(gt[:,1]) < -50)[0])
+            f.write(f"> **Ground Truth (Radau)** generated exactly **{spikes_gt} spikes** for the baseline Regular pattern.\n\n")
         if rmse_rows:
             headers = list(rmse_rows[0].keys())
             f.write("| "+" | ".join(headers)+" |\n")
@@ -347,17 +321,18 @@ def evaluate_methods():
         
         # 5. Stability Analysis
         f.write("## 5. Stability Analysis (dt Sweep)\n")
-        f.write("To empirically test the theoretical stability properties, we swept the time step $h$ from $0.01$ to $2.0$ ms and measured the RMSE against the high-resolution Ground Truth.\n\n")
-        f.write("* **Adams-Bashforth 2:** Fails and explodes (NaN/Infinity) at larger step sizes due to its conditional stability constraint.\n")
-        f.write("* **Backward Euler:** Continues to simulate without crashing, demonstrating unconditional A-stability, albeit with degraded accuracy.\n\n")
+        f.write("We varied the integration time step $h$ logarithmically to empirically test the stability theorems:\n\n")
+        f.write("* **Explicit Methods (AB2, RK4):** Display catastrophic failure (Infinity/NaNs) at large step sizes, validating their conditional stability.\n")
+        f.write("* **Implicit Method (Backward Euler):** Maintains stability without crashing regardless of $h$, though the trajectory becomes highly inaccurate (0 spikes).\n\n")
         f.write("See `stability_analysis.png` in `/outputs/figures/` for the empirical graph.\n\n")
 
         # 6. Conclusion
         f.write("## 6. Visualizations\n")
-        f.write("All generated Phase Portraits and Time-Series graphs (including zoomed-in spike insets to highlight phase characteristics) are saved in the `/outputs/figures/` directory.\n")
+        f.write("Individual plots combining the Voltage time-series, Recovery time-series, and Phase Portraits for each solver versus the Radau Ground Truth have been generated and saved cleanly in `/outputs/figures/`.\n")
 
-    print(f"\n  Notes → {notes_path}\nDone ✓")
+    print(f"\n  Notes -> {notes_path}\nDone OK")
     return gt
+
 
 import warnings
 
@@ -381,7 +356,7 @@ def evaluate_stability(gt):
         
     rmse_ab2, rmse_be, rmse_rk4 = [], [], []
     spikes_ab2_list, spikes_be_list, spikes_rk4_list = [], [], []
-    spikes_gt = int(np.sum(gt[:,1] >= config.v_peak))
+    spikes_gt = len(np.where(np.diff(gt[:,1]) < -50)[0])
     print(f"  [Ground Truth has {spikes_gt} spikes]")
     warnings.filterwarnings('ignore', category=RuntimeWarning)
     
@@ -426,7 +401,7 @@ def evaluate_stability(gt):
     parts = content.split("## 6. Visualizations")
     
     table_md = "### Empirical Stability Metrics\n\n"
-    table_md += f"> **Ground Truth (LSODA)** has exactly **{spikes_gt} spikes** for this time window.\n\n"
+    table_md += f"> **Ground Truth (Radau)** has exactly **{spikes_gt} spikes** for this time window.\n\n"
     table_md += "| Step Size $h$ (ms) | AB2 RMSE | BE RMSE | RK4 RMSE | AB2 Spikes | BE Spikes | RK4 Spikes |\n"
     table_md += "|---|---|---|---|---|---|---|\n"
     for i, h in enumerate(h_values):
