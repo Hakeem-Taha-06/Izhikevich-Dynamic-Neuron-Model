@@ -252,7 +252,6 @@ outputs/figures/*.svg
 
 # Ignore trained model weights, but keep the directory and its README
 outputs/models/*.pt
-outputs/models/*.pth
 !outputs/models/.gitkeep
 !outputs/models/MODELS_README.md
 
