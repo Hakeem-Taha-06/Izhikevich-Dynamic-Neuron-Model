@@ -78,9 +78,8 @@ def spike_event(t, y):
 spike_event.terminal = True
 spike_event.direction = 1
 
-
 def run_single_simulation(V0, W0):
-    """Run one simulation using the step-current protocol from config."""
+
     all_times = []
     all_v = []
     all_w = []
@@ -103,7 +102,7 @@ def run_single_simulation(V0, W0):
 
         t_segment = np.arange(
             t_current,
-            sol.t[-1] + DT_EVAL,
+            min(sol.t[-1], T_END),
             DT_EVAL
         )
 
@@ -126,17 +125,39 @@ def run_single_simulation(V0, W0):
         w_reset = sol.y_events[0][0][1] + d
 
         state = [v_reset, w_reset]
-        t_current = spike_time
 
-    # Compute I_ext for each time point for the CSV
-    t_arr = np.array(all_times)
-    I_arr = I_ext_fn(t_arr)
+        t_current = spike_time + DT_EVAL
+
+
+    all_times = np.array(all_times)
+    all_v = np.array(all_v)
+    all_w = np.array(all_w)
+
+    time_uniform = np.arange(
+        T_START,
+        T_END + DT_EVAL,
+        DT_EVAL
+    )
+
+    v_uniform = np.interp(
+        time_uniform,
+        all_times,
+        all_v
+    )
+
+    w_uniform = np.interp(
+        time_uniform,
+        all_times,
+        all_w
+    )
+
+    I_uniform = I_ext_fn(time_uniform)
 
     return pd.DataFrame({
-        "Time (ms)": all_times,
-        "I_ext (pA)": I_arr,
-        "v (mV)": all_v,
-        "w (pA)": all_w
+        "Time (ms)": time_uniform,
+        "I_ext (pA)": I_uniform,
+        "v (mV)": v_uniform,
+        "w (pA)": w_uniform
     })
 
 
@@ -170,15 +191,28 @@ if __name__ == "__main__":
     if output_file.exists():
         output_file.unlink()
 
-    # Single simulation with default initial conditions and
-    # step-current protocol (0 pA -> I_EXT_DEFAULT at T_STIM_ONSET)
     V0, W0 = INITIAL_STATE
-    print(f"Running step-current simulation: I=0 for t<{T_STIM_ONSET}ms, "
-          f"I={I_EXT_DEFAULT} for t>={T_STIM_ONSET}ms")
-    print(f"V0={V0}, W0={W0}, T_END={T_END}")
 
-    df = run_single_simulation(V0=V0, W0=W0)
-    df.insert(0, "Sim_ID", 1)
+    print(
+        f"Running step-current simulation: "
+        f"I=0 for t<{T_STIM_ONSET}ms, "
+        f"I={I_EXT_DEFAULT} for t>={T_STIM_ONSET}ms"
+    )
+
+    print(
+        f"V0={V0}, W0={W0}, T_END={T_END}"
+    )
+    print("DT_EVAL =", DT_EVAL)
+    df = run_single_simulation(
+        V0=V0,
+        W0=W0
+    )
+
+    df.insert(
+        0,
+        "Sim_ID",
+        1
+    )
 
     df = df[
         [
@@ -190,15 +224,42 @@ if __name__ == "__main__":
         ]
     ]
 
-    df.to_csv(output_file, index=False)
+    df.to_csv(
+        output_file,
+        index=False
+    )
 
-    print(f"Finished. Shape: {df.shape}")
-    print(f"Saved to: {output_file}")
-    
+    print(
+        f"Finished. Shape: {df.shape}"
+    )
 
-    plt.figure(figsize=(12,5))
-    plt.plot(df["Time (ms)"], df["v (mV)"])
-    plt.xlabel("Time (ms)")
-    plt.ylabel("Membrane Potential (mV)")
-    plt.grid()
+    print(
+        f"Saved to: {output_file}"
+    )
+
+
+    plt.figure(
+        figsize=(12,5)
+    )
+
+    plt.plot(
+        df["Time (ms)"],
+        df["v (mV)"],
+        linewidth=1
+    )
+
+    plt.xlabel(
+        "Time (ms)"
+    )
+
+    plt.ylabel(
+        "Membrane Potential (mV)"
+    )
+
+    plt.title(
+        "Izhikevich RS Neuron using Radau"
+    )
+
+    plt.grid(True)
+
     plt.show()
