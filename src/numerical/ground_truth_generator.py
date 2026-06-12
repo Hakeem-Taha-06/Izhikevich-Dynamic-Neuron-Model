@@ -48,6 +48,7 @@ import numpy as np
 import pandas as pd
 import sys
 from pathlib import Path
+import matplotlib.pyplot as plt
 
 # =====================================================
 # Add project root to Python path
@@ -193,3 +194,11 @@ if __name__ == "__main__":
 
     print(f"Finished. Shape: {df.shape}")
     print(f"Saved to: {output_file}")
+    
+
+    plt.figure(figsize=(12,5))
+    plt.plot(df["Time (ms)"], df["v (mV)"])
+    plt.xlabel("Time (ms)")
+    plt.ylabel("Membrane Potential (mV)")
+    plt.grid()
+    plt.show()
