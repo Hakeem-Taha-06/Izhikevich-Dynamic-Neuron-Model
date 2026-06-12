@@ -67,27 +67,31 @@ PATTERNS = {
     'Chattering': {
         'overrides': {
             'C_m': 50.0,  'k': 1.5,
-            'v_r': -40.0, 'v_t': -40.0,
+            'v_r': -60.0, 'v_t': -40.0,
+            'v_peak': 25.0,
             'a':   0.03,  'b':   1.0,
             'c':  -40.0,  'd':  150.0,
         },
-        'V_0'      : -40.0,
+        'V_0'      : -60.0,
         'I_ext'    : 300.0,
         't_end'    : 1000.0,
         'plot_from': 0.0,
+        'plot_until': 250.0,
         'label'    : 'Chattering (CH)', 'color': 'crimson',
     },
     'intrinsically': {
         'overrides': {
             'C_m': 150.0, 'k':  1.2,
             'v_r': -75.0, 'v_t': -45.0,
+            'v_peak': 50.0,
             'a':   0.01,  'b':   5.0,
             'c':  -56.0,  'd':  130.0,
         },
         'V_0'    : -75.0,
-        'I_ext'  : 700.0,
+        'I_ext'  : 600.0,
         't_end'  : 1000.0,
         'plot_from': 0.0,
+        'plot_until': 250.0,
         'label'  : 'Intrinsically Bursting (IB)', 'color': 'darkorchid',
     },
 }
@@ -214,8 +218,8 @@ def evaluate_methods():
                 visual_match = 'Passed'
                 try:
                     from fastdtw import fastdtw
-                    # Strictly downsample both to max ~10,000 points to prevent hanging
-                    target_len = 10000
+                    # Strictly downsample both to max ~2,000 points to prevent hanging
+                    target_len = 2000
                     s_res = max(1, len(res) // target_len)
                     s_gt = max(1, len(gt) // target_len)
                     
@@ -257,10 +261,14 @@ def evaluate_methods():
 
             ax_v.set_title(f"Voltage: {label}")
             ax_v.set_xlabel("Time (ms)"); ax_v.set_ylabel("v (mV)")
+            if 'plot_until' in pat:
+                ax_v.set_xlim(0, pat['plot_until'])
             ax_v.legend(); ax_v.grid(True)
 
             ax_w.set_title(f"Recovery: {label}")
             ax_w.set_xlabel("Time (ms)"); ax_w.set_ylabel("w (pA)")
+            if 'plot_until' in pat:
+                ax_w.set_xlim(0, pat['plot_until'])
             ax_w.legend(); ax_w.grid(True)
 
             ax_pp.set_title(f"Phase Portrait: {label}")
@@ -302,8 +310,16 @@ def evaluate_methods():
 
         # 3. Biological Patterns
         f.write("## 3. Biological Firing Patterns Analysis\n\n")
+        
+        f.write("### Izhikevich 2007 Exact Parameters\n")
+        f.write("| Pattern | $C_m$ | $k$ | $v_r$ | $v_t$ | $v_{peak}$ | $a$ | $b$ | $c$ | $d$ | $I_{ext}$ |\n")
+        f.write("|---|---|---|---|---|---|---|---|---|---|---|\n")
+        f.write("| Regular Spiking (RS) | 100 | 0.7 | -60 | -40 | 35 | 0.03 | -2 | -50 | 100 | 70 |\n")
+        f.write("| Chattering (CH) | 50 | 1.5 | -60 | -40 | 25 | 0.03 | 1 | -40 | 150 | 300 |\n")
+        f.write("| Intrinsically Bursting (IB) | 150 | 1.2 | -75 | -45 | 50 | 0.01 | 5 | -56 | 130 | 600 |\n\n")
+
         f.write("### Regular Spiking (RS)\n")
-        f.write("This is the most typical behavior of excitatory neurons in the cortex. They fire isolated spikes with spike-frequency adaptation (the time between spikes increases). ($c=-50, d=100$).\n")
+        f.write("This is the most typical behavior of excitatory neurons in the cortex. They fire isolated spikes with spike-frequency adaptation (the time between spikes increases).\n")
         f.write("**Results:** All solvers successfully matched the Ground Truth (Radau). RK4 was perfectly aligned, while Backward Euler showed slight phase shifting due to numerical damping.\n\n")
         
         f.write("### Chattering (CH)\n")
