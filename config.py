@@ -47,7 +47,7 @@ v_peak = 35.0   # Spike cutoff / peak voltage (mV)
 # ==========================================
 # [Membrane Potential v (mV), Recovery Variable w (pA)]
 V_0 = -60.0
-W_0 = b * (V_0 - v_r)  # Steady-state formulation for 2007 model
+W_0 = 0.0  # Steady-state formulation for 2007 model
 
 INITIAL_STATE = np.array([V_0, W_0])
 
