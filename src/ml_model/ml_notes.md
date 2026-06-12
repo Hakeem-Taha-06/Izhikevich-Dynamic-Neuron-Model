@@ -1,8 +1,8 @@
 # ML Module — Engineering Decisions & Rationale
 
-**Roles covered:** 8 (Architecture), 9 (Physics Loss)  
+**Roles covered:** 8 (Architecture), 9 (Physics Loss), 10 (Training Loop)  
 **Author:** Hakeem  
-**Last updated:** 2026-06-11
+**Last updated:** 2026-06-12
 
 ---
 
@@ -12,11 +12,13 @@
 
 | Component | Choice | Justification |
 |---|---|---|
-| Input features | `[t, I_ext, V_0, W_0]` — 4 inputs | A single model must generalise across the 4,000-simulation dataset (Role 4), which sweeps external current and initial conditions. Encoding `I_ext`, `V_0`, `W_0` as inputs allows the network to learn the full family of trajectories. |
+| Input features | `[t]` — 1 input (time in ms) | The project now uses a single step-current protocol. The step-current `I_ext(t)` is handled inside the physics loss, not as a network input. |
 | Output features | `[v, w]` — 2 outputs in physical units (mV, pA) | Directly consumed by the physics loss, IC loss, and evaluation pipeline. No downstream denormalization required. |
-| Hidden layers | 3 layers × 64 neurons (default) | Sufficient capacity for a 2-variable ODE system with moderate nonlinearity. Configurable via constructor for tuning. |
+| Hidden layers | 6 layers × 128 neurons (default) | Deeper and wider than the original 3×64 to better capture the sharp spike transitions. Matches the comparison repo's architecture. |
 | Activation | `Tanh` | Smooth, bounded in [-1, 1], infinitely differentiable. Required by the PINN approach — `torch.autograd.grad` computes dv/dt and dw/dt through the activation, so non-differentiable activations (ReLU) would produce piecewise-constant derivatives. |
-| Output activation | None (linear) | The network must predict physical values across the full voltage range (−60 to 35 mV) and unbounded recovery variable. A bounded activation would clip the output. |
+| Output activation | None (linear) | The network must predict physical values across the full voltage range (−60 to 35 mV) and unbounded recovery variable. |
+| Weight init | Xavier normal (gain=1.0) | Better gradient flow in deeper networks compared to default init. |
+| Time normalization | `t_norm = (t - T_max/2) / (T_max/2)` → [-1, 1] | Centres the input around zero and bounds it to [-1, 1], matching the Tanh activation's sensitive region. |
 
 ### 1.2 Output Denormalization
 
@@ -30,7 +32,7 @@ Without denormalization, the final Linear layer must learn large biases and weig
 
 ```
 v = raw_v × V_SCALE + V_SHIFT
-w = raw_u × W_SCALE + W_SHIFT
+w = raw_w × W_SCALE + W_SHIFT
 ```
 
 | Constant | Value | Derivation |
@@ -46,28 +48,47 @@ w = raw_u × W_SCALE + W_SHIFT
 
 The constants are stored as `register_buffer` (non-trainable, tracked by `state_dict`, moved with `.to(device)`).
 
+### 1.3 Why Input Is Just `t` (Not `[t, I_ext, V_0, W_0]`)
+
+The original architecture conditioned on `I_ext`, `V_0`, and `W_0` because it was designed for a 4,000-simulation sweep across 40 current levels × 20 initial voltages × 5 initial recovery values. After switching to the comparison repo's protocol (single step-current at 70 pA, fixed ICs), all three extra inputs became constants — conditioning on them adds unnecessary parameters without benefit.
+
+The step-current `I_ext(t)` is now computed inside `physics_loss.py` via `I_ext_torch(t)`, which returns 0 for `t < 100 ms` and 70 pA for `t ≥ 100 ms`. This is a known function of `t`, not a learnable quantity.
+
 ---
 
 ## 2. Physics Loss Design (`physics_loss.py`)
 
 ### 2.1 Core Approach — ODE Residual
 
-The physics loss penalises violations of the governing ODEs. For each collocation point `(t, I_ext, V_0, W_0)`:
+The physics loss penalises violations of the governing ODEs. For each collocation point `t`:
 
-1. **Forward pass** → get `v_pred`, `w_pred`
-2. **Autograd** → compute `dv_pred/dt`, `du_pred/dt` via `torch.autograd.grad`
-3. **Residual** → the difference between the autograd derivative and the ODE right-hand side:
-   - `R_v = dv/dt − [k(v−v_r)(v−v_t) − w + I_ext] / C_m`
+1. **Forward pass** → get `v_pred`, `w_pred` from model(t)
+2. **Autograd** → compute `dv_pred/dt`, `dw_pred/dt` via `torch.autograd.grad`
+3. **Step-current** → compute `I_ext(t)` internally via `I_ext_torch(t)`
+4. **Residual** → the difference between the autograd derivative and the ODE right-hand side:
+   - `R_v = dv/dt − [k(v−v_r)(v−v_t) − w + I_ext(t)] / C_m`
    - `R_w = dw/dt − a·[b(v−v_r) − w]`
-4. **Loss** → mean squared normalised residual
+5. **Loss** → mean squared normalised residual
 
-### 2.2 Spike Masking (Peak-Only)
+### 2.2 Step-Current Function (`I_ext_torch`)
+
+The external current follows the step-current protocol from `config.py`:
+
+```python
+def I_ext_torch(t):
+    return I_EXT_DEFAULT * (t >= T_STIM_ONSET).float()
+    # Returns 0.0 for t < 100 ms, 70.0 for t >= 100 ms
+```
+
+The result is detached from the computation graph (via `t.detach()`) since `I_ext` is an external forcing term, not a learnable quantity. Gradients should not flow through it.
+
+### 2.3 Spike Masking (Peak-Only)
 
 **Problem:** The discrete reset (`v ← c`, `w ← w + d` when `v ≥ v_peak`) creates a discontinuity that the continuous network cannot represent. Near the spike, `dv_pred/dt` approaches infinity, producing explosive residuals that crash training with NaN.
 
 **Decision: Mask the fast-upstroke zone only.** Points where `v_pred > v_peak − peak_margin` are excluded from the physics loss.
 
-**Why not mask near the reset voltage (`c = −50 mV`) as well?** Because `c = −50` is only 10 mV above the resting potential `v_r = −60`. A near-reset mask would exclude the entire subthreshold region where the neuron spends most of its time and the ODE is smooth and perfectly valid. This was identified as a critical flaw in an earlier version and intentionally removed.
+**Why not mask near the reset voltage (`c = −50 mV`) as well?** Because `c = −50` is only 10 mV above the resting potential `v_r = −60`. A near-reset mask would exclude the entire subthreshold region where the neuron spends most of its time and the ODE is smooth and perfectly valid.
 
 **Margin values were chosen from the actual dynamics:**
 
@@ -81,7 +102,7 @@ The physics loss penalises violations of the governing ODEs. For each collocatio
 | **30** | **4410** | **49.1** | **End mask (margin=5)** |
 | 35 | 4988 | 54.9 | v_peak |
 
-### 2.3 Curriculum Margin Schedule (`get_margin`)
+### 2.4 Curriculum Margin Schedule (`get_margin`)
 
 **Decision:** The margin starts wide and tightens linearly over training epochs.
 
@@ -91,29 +112,27 @@ The physics loss penalises violations of the governing ODEs. For each collocatio
 | mid | 12.5 mV | 22.5 mV | −60 to 22.5 mV | 87% |
 | final | 5.0 mV | 30 mV | −60 to 30 mV | 95% |
 
-**Rationale:** Early in training the network is untrained and the spike upstroke would produce catastrophic gradients. Starting with a wide margin (excluding dv/dt > 34 mV/ms) keeps training stable. As the network learns the smooth dynamics, the margin tightens to enforce physics closer to the spike peak.
+**Rationale:** Early in training the network is untrained and the spike upstroke would produce catastrophic gradients. Starting with a wide margin keeps training stable. As the network learns the smooth dynamics, the margin tightens to enforce physics closer to the spike peak.
 
-**Role 10 dependency:** The `get_margin(epoch, max_epochs)` function must be called inside the training loop because it requires the current epoch number, which only exists there. This is the minimum coordination needed — one line per epoch.
-
-### 2.4 Residual Scale Normalization
+### 2.5 Residual Scale Normalization
 
 **Problem:** The two residuals have different physical units and magnitudes:
 - `R_v` is in mV/ms — typical magnitude ~5–10
 - `R_w` is in pA/ms — typical magnitude ~1–3
-- Without normalization, `mean(R_v²)` dominates `mean(R_u²)` by 10–25×
+- Without normalization, `mean(R_v²)` dominates `mean(R_w²)` by 10–25×
 
 **Decision:** Divide each residual by a characteristic ODE rate before squaring:
 
 | Constant | Value | Derivation |
 |---|---|---|
-| `DV_RATE` | 5.0 mV/ms | `I_EXT_DEFAULT / C_m` — current-driven voltage rate at rest |
-| `DW_RATE` | 3.0 pA/ms | `a × |d|` — post-spike recovery rate |
+| `DV_RATE` | 0.7 mV/ms | `I_EXT_DEFAULT / C_m = 70 / 100` — current-driven voltage rate at rest |
+| `DW_RATE` | 3.0 pA/ms | `a × |d| = 0.03 × 100` — post-spike recovery rate |
 
-Both terms become dimensionless and contribute roughly equally. The ratio `(DV_RATE/DW_RATE)² = 2.8`, meaning without this normalization the voltage residual would dominate by nearly 3×.
+Both terms become dimensionless and contribute roughly equally.
 
-### 2.5 Mean Computation — Boolean Indexing
+### 2.6 Mean Computation — Boolean Indexing
 
-**Problem:** An earlier implementation used `torch.where(mask, zeros, R)` to zero out masked points. The zeroed entries still appeared in the denominator of `torch.mean`, diluting the loss by the fraction of masked points.
+**Problem:** An earlier implementation used `torch.where(mask, zeros, R)` to zero out masked points. The zeroed entries still appeared in the denominator of `torch.mean`, diluting the loss.
 
 **Decision:** Use boolean indexing on the valid (unmasked) subset:
 
@@ -129,32 +148,33 @@ An edge-case guard returns `0.0` if every point in the batch is masked.
 
 ## 3. Initial-Condition Loss (`compute_ic_loss`)
 
-**Purpose:** Anchor the network's prediction at `t = 0` to the prescribed initial state. Without this, the network could learn the correct dynamics but offset from the true starting point.
+**Purpose:** Anchor the network's prediction at `t = 0` to the prescribed initial state from `config.INITIAL_STATE`. Without this, the network could learn the correct dynamics but offset from the true starting point.
+
+**Simplified interface:** `compute_ic_loss(model)` — no parameters needed. The function reads the known ICs from config (`V_0 = -60.0`, `W_0 = 0.0`) and evaluates the network at `t = 0`.
 
 **Normalization:** The v and w error terms are divided by their characteristic scales (`V_SCALE = 95 mV`, `W_SCALE = 100 pA`) so that both contribute equally regardless of physical units.
 
-**Note:** This is optional — the data loss from ground truth already contains points at `t = 0`, which implicitly enforces the initial condition. An explicit IC loss can improve early convergence.
-
 ---
 
-## 4. Total Loss Structure (for Role 10)
+## 4. Total Loss Structure
 
 ```
-L_total = L_data + λ_phys · L_physics + λ_ic · L_ic
+L_total = λ_data · L_data + λ_phys · L_physics + λ_ic · L_ic
 ```
 
 | Term | Computed by | Description |
 |---|---|---|
-| `L_data` | Role 10 | MSE between network predictions and ground truth CSV |
-| `L_physics` | `compute_physics_loss()` | Normalised ODE residual with spike masking |
-| `L_ic` | `compute_ic_loss()` | Normalised initial-condition penalty |
+| `L_data` | Role 10 | MSE between model(t) predictions and ground truth [v, w] |
+| `L_physics` | `compute_physics_loss(model, t)` | Normalised ODE residual with spike masking |
+| `L_ic` | `compute_ic_loss(model)` | Normalised initial-condition penalty |
 
-**Recommended starting weights:**
+**Loss weights (aligned with comparison repo):**
 
-| Hyperparameter | Starting value | Rationale |
+| Hyperparameter | Value | Rationale |
 |---|---|---|
-| `λ_phys` | 0.01 | Physics residual is in (dimensionless)² after normalization; data loss is in (mV)². Scale difference requires a small initial weight. |
-| `λ_ic` | 1.0 | IC loss is already normalised and cheap to compute. |
+| `λ_data` | 50.0 | Strong data anchoring — the supervised data teaches the spike resets that physics alone cannot handle |
+| `λ_phys` | 1.0 | Physics residual is dimensionless after normalization |
+| `λ_ic` | 200.0 | Very strong IC anchoring to prevent drift (comparison repo uses 200) |
 
 ---
 
@@ -162,11 +182,12 @@ L_total = L_data + λ_phys · L_physics + λ_ic · L_ic
 
 | Function | Input | Output | Consumer |
 |---|---|---|---|
-| `IzhikevichPINN.forward()` | `(N, 4)` tensor: `[t, I_ext, V_0, W_0]` | `(N, 2)` tensor: `[v, w]` in physical units | Physics loss, IC loss, training loop |
-| `predict_trajectory()` | `t, I_ext, V_0, W_0` tensors | `(N, 3)` tensor: `[Time, v, w]` | Evaluation (Role 11) |
-| `compute_physics_loss()` | model, `t` (requires_grad), `I_ext, V_0, W_0`, `peak_margin` | scalar tensor | Training loop (Role 10) |
-| `compute_ic_loss()` | model, `I_ext_0, V_0, W_0` | scalar tensor | Training loop (Role 10) |
+| `IzhikevichPINN.forward()` | `(N, 1)` tensor: `[t]` | `(N, 2)` tensor: `[v, w]` in physical units | Physics loss, IC loss, training loop |
+| `predict_trajectory()` | `t_start, t_end, dt` (optional, defaults from config) | `(N, 3)` numpy array: `[Time, v, w]` | Evaluation (Role 11) |
+| `compute_physics_loss()` | `model`, `t` (requires_grad), `peak_margin` | scalar tensor | Training loop (Role 10) |
+| `compute_ic_loss()` | `model` | scalar tensor | Training loop (Role 10) |
 | `get_margin()` | `epoch, max_epochs` | float | Training loop (Role 10) |
+| `I_ext_torch()` | `t` (any shape tensor) | same-shape tensor (pA) | Internal to physics loss |
 
 ---
 
@@ -174,71 +195,51 @@ L_total = L_data + λ_phys · L_physics + λ_ic · L_ic
 
 ### 6.1 Data Ingestion — `IzhikevichDataset`
 
-**Problem:** The ground truth CSV from Role 4 contains ~4,000 simulations (40 `I_ext` × 20 `V_0` × 5 `W_0`), each with ~10,001 time steps — roughly 40 million rows total. The network's input contract requires per-row `[t, I_ext, V_0, W_0]`, where `V_0` and `W_0` are the initial conditions of the *parent simulation*, not the current row's `v`/`w`.
+**Simplified structure:** The dataset now returns `(t, v_gt, w_gt)` per sample — just time and ground truth values. No `I_ext`, `V_0`, `W_0` columns are needed since the network takes only `t` as input.
 
-**Decision:** A custom `IzhikevichDataset(Dataset)` class handles the multi-simulation structure:
-
-1. Reads the full CSV with columns `Sim_ID | Time (ms) | I_ext (pA) | v (mV) | w (pA)`
-2. Groups by `Sim_ID`, extracts the first time-step's `v` and `w` as that simulation's `V_0` and `W_0`
-3. Merges the initial conditions back onto every row
-4. Pre-converts all columns to tensors at construction time (fast `__getitem__`)
-
-This ensures that every row gets its correct initial conditions rather than broadcasting a single `INITIAL_STATE` across the entire dataset.
+The ground truth CSV schema remains: `Sim_ID | Time (ms) | I_ext (pA) | v (mV) | w (pA)`. The dataset reads `Time`, `v`, and `w` columns and ignores `I_ext` and `Sim_ID`.
 
 ### 6.2 Two-Phase Optimisation
 
-**Decision:** The training pipeline uses two phases, following standard PINN practice:
-
 | Phase | Optimiser | Epochs | Batch strategy | Purpose |
 |---|---|---|---|---|
-| 1 | Adam | 4,000 | Mini-batch (`DataLoader`, 4096/batch) | Fast initial convergence — SGD noise helps escape local minima in the early loss landscape |
-| 2 | L-BFGS | 1,000 | Full-batch (random 16K-point sample) | Precise refinement — quasi-Newton method exploits second-order curvature to polish the solution |
+| 1 | Adam | 8,000 | Mini-batch (`DataLoader`, 4096/batch) | Fast initial convergence — SGD noise helps escape local minima |
+| 2 | L-BFGS | 100 | Full-batch (random 16K-point sample) | Precise refinement — quasi-Newton method exploits second-order curvature |
 
-**Why not Adam alone?** Adam converges quickly to a rough solution but plateaus. L-BFGS uses Hessian approximations to find sharper minima, which is critical for PINNs where the physics residual requires high precision.
-
-**Why not L-BFGS alone?** L-BFGS is deterministic and can get trapped in poor local minima early on. Adam's stochastic mini-batches provide implicit regularisation that helps find a better basin first.
+**Why this split?** Adam converges quickly to a rough solution but plateaus. L-BFGS uses Hessian approximations to polish the solution. The comparison repo uses the same Adam → L-BFGS pattern.
 
 ### 6.3 Mini-Batching (Phase 1)
 
-**Problem:** The full dataset (~40M rows) cannot fit in a single forward pass without exhausting GPU memory.
-
-**Decision:** Use `torch.utils.data.DataLoader` with `batch_size=4096` and `shuffle=True`. Each batch independently computes:
+Uses `torch.utils.data.DataLoader` with `batch_size=4096` and `shuffle=True`. Each batch independently computes:
 
 ```
-L_batch = L_data + λ_phys · L_physics + λ_ic · L_ic
+L_batch = λ_data · L_data + λ_phys · L_physics + λ_ic · L_ic
 ```
 
-A critical detail: `t` must be cloned and have `requires_grad_(True)` set **per batch**, because the DataLoader's collated tensors are leaf tensors without gradient tracking. Without this, `torch.autograd.grad` inside `compute_physics_loss` would return `None`.
+A critical detail: `t` must be cloned and have `requires_grad_(True)` set **per batch**, because the DataLoader's collated tensors are leaf tensors without gradient tracking.
+
+**Gradient clipping:** `clip_grad_norm_(model.parameters(), max_norm=1.0)` prevents gradient explosions from the spike dynamics.
 
 ### 6.4 L-BFGS Mechanics (Phase 2)
 
-**Problem:** L-BFGS is a full-batch optimiser — it requires the same data across multiple closure evaluations within a single `.step()`. The full dataset is too large.
+Draws a fixed random sample of 16,384 points from the dataset and reuses it for all L-BFGS epochs. The closure function computes the full loss (data + physics + IC) and backpropagates.
 
-**Decision:** Draw a fixed random sample of 16,384 points from the dataset and reuse it for all L-BFGS epochs.
-
-The closure function (called up to `max_iter=20` times per step by the line search):
-
-1. Zeros gradients
-2. Computes forward pass on the fixed sample
-3. Computes `L_data + λ_phys · L_physics + λ_ic · L_ic`
-4. Calls `.backward()` to populate parameter gradients
-5. Returns the scalar loss (required by L-BFGS for Wolfe conditions)
-
-`line_search_fn="strong_wolfe"` ensures sufficient decrease and curvature conditions are met, preventing L-BFGS from taking excessively large or small steps.
+`line_search_fn="strong_wolfe"` ensures sufficient decrease and curvature conditions.
 
 ### 6.5 Hyperparameter Defaults
 
 | Parameter | Default | Rationale |
 |---|---|---|
-| `adam_epochs` | 4,000 | ~80% of total budget for exploration |
-| `lbfgs_epochs` | 1,000 | ~20% for refinement |
+| `adam_epochs` | 8,000 | Matches comparison repo |
+| `lbfgs_epochs` | 100 | Matches comparison repo |
 | `batch_size` | 4,096 | Balances GPU utilisation vs gradient noise |
 | `lr_adam` | 1e-3 | Standard Adam learning rate |
-| `lr_lbfgs` | 1.0 | L-BFGS internally manages step size via line search; lr=1.0 is the standard default |
-| `lbfgs_sample_size` | 16,384 | Large enough for representative coverage, small enough for memory |
-| `λ_phys` | 0.01 | From Section 4 analysis |
-| `λ_ic` | 1.0 | From Section 4 analysis |
+| `lr_lbfgs` | 0.1 | Comparison repo default |
+| `lbfgs_sample_size` | 16,384 | Representative coverage, memory-safe |
+| `λ_data` | 50.0 | Comparison repo uses 50 |
+| `λ_phys` | 1.0 | Physics residual is dimensionless |
+| `λ_ic` | 200.0 | Comparison repo uses 200 |
 
 ### 6.6 Final Inference
 
-After training, `model.eval()` is called and `predict_trajectory()` generates the default trajectory (`I_EXT_DEFAULT`, `INITIAL_STATE`) inside `torch.no_grad()`. The result is converted to a `numpy.ndarray` of shape `(N, 3)` ordered as `[Time, v, w]`, matching the project-wide output contract.
+After training, `predict_trajectory(model)` generates the trajectory over the full time range using defaults from `config.py`. Returns `numpy.ndarray` of shape `(N, 3)` ordered as `[Time, v, w]`.
