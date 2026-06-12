@@ -57,15 +57,32 @@ The Izhikevich model is NOT a continuous curve. All coders (except Role 4) must 
 #### A) Data Pipeline
 
 #### **Role 4: Ground Truth & Data Engineer**
-* **Objective:** You are the foundation of the Machine Learning phase. Your task is to generate a mathematically flawless, high-fidelity dataset containing ~4,000 unique neuron simulations. If your data is corrupted or inaccurate, the AI model (Roles 8, 9, 10) is mathematically doomed to fail.
+* **Objective:** You are the foundation of the Machine Learning phase. Your task is to generate a mathematically flawless, high-fidelity dataset containing exactly 4,000 unique neuron simulations of the **2007 Generalized Izhikevich Model**. If your data is corrupted, ignores the time-dependent physics, or is incorrectly sampled, the AI model (Roles 8, 9, 10) is mathematically doomed to fail.
 * **Workspace:** `/src/numerical/ground_truth_generator.py`
-* **Deliverable:** `/data/ground_truth.csv`
+* **Deliverable:** `/data/ground_truth.csv` (Target size: ~40,000,000 rows / 1 GB)
 
 **1. The Engineering Trap: The Discrete Reset**
-The Izhikevich model dictates that when the membrane potential ($v$) hits $v_{peak}$, it instantly resets to $c$, and the recovery variable ($w$) jumps by $d$. 
-* **The Problem:** Continuous industrial solvers (like `solve_ivp`) do not understand teleportation. If you just run the solver for 100ms, it will mathematically overshoot the $v_{peak}$ threshold, ruining the spike timing and corrupting the dataset.
-* **Your Required Architecture:** You must implement **Segmented Integration**. You are required to use an event tracker built into your solver to detect the exact microsecond $v$ reaches $v_{peak}$. When that event triggers, you must command the solver to completely halt. You will then manually apply the mathematical reset to the state variables, log the discrete jump in your data arrays, and initialize a *new* solver run from that exact timestamp to continue the simulation until you reach the 100ms target. 
-* **Solver Constraints:** Because this is a stiff differential system, you are required to use a stiff solver method (e.g., `Radau` or `LSODA`). Set your relative tolerance to $10^{-6}$ and absolute tolerance to $10^{-9}$.
+The 2007 Izhikevich model dictates that when the membrane potential ($v$) hits $v_{peak}$ ($35.0$ mV), it instantly resets to $c$ ($-50.0$ mV), and the recovery variable ($w$) jumps by $d$ ($100.0$ pA). 
+* **The Problem:** Continuous industrial solvers (like `solve_ivp`) do not understand teleportation. If you just run the solver for $1000$ ms, it will mathematically overshoot the $v_{peak}$ threshold, ruining the spike timing and corrupting the dataset.
+* **Your Required Architecture:** You must implement **Segmented Integration**. You are required to use an event tracker built into your solver to detect the exact microsecond $v$ reaches $v_{peak}$. When that event triggers, you must command the solver to completely halt. You will then manually apply the mathematical reset to the state variables, log the discrete jump in your data arrays, and initialize a *new* solver run from that exact timestamp to continue the simulation until you reach the $1000.0$ ms target. 
+
+**2. The Physics Protocol: Time-Dependent Current**
+To match the published reference literature, the neuron must start at rest. You cannot apply a constant current from the first millisecond. 
+* **The Rule:** You must implement a Heaviside step function for the external current ($I_{ext}$) inside your integration loop. 
+* **The Logic:** For any time $t < 100.0$ ms, the injected current must be strictly $0.0$ pA. For any time $t \ge 100.0$ ms, the injected current becomes your active $I_{ext}$ variation.
+
+**3. Solver and Resolution Constraints**
+* **The Solver:** Because this is a stiff differential system (especially during the voltage spike), you are strictly required to use the **`Radau`** method. Set your relative tolerance (`rtol`) to $10^{-6}$ and absolute tolerance (`atol`) to $10^{-9}$. 
+* **The Resolution (Memory Preservation):** You must simulate out to $T_{end} = 1000.0$ ms to capture the steady-state firing rhythms. However, to prevent Google Colab from crashing due to RAM overload, you must downsample your output evaluation points. Set your evaluation step size ($dt$) to exactly **`0.1` ms**.
+
+**4. The Iteration Grid (Dataset Volume)**
+You must construct a nested loop utilizing `numpy.linspace` (with the `num` parameter) to generate exactly 4,000 unique simulation runs. Your grid must sweep through:
+* **Current Magnitude ($I_{ext}$):** From $0.0$ pA to $500.0$ pA (`num=40`).
+* **Initial Voltage ($V_0$):** From $-85.0$ mV to $-45.0$ mV (`num=20`).
+* **Initial Recovery ($W_0$):** Use exactly this array: `[-50.0, -25.0, 0.0, 25.0, 50.0]`.
+
+**5. The Output Format**
+Your final `ground_truth.csv` must contain columns strictly ordered as: `[Time, I_ext, V0, W0, v, w]`. Every single one of the 4,000 simulations will generate exactly 10,000 time steps, resulting in a perfectly uniform 40,000,000 row dataset.
 
 **2. The Iteration Grid (Data Volume)**
 A neural network needs diverse data to learn the underlying physics. You must construct a nested loop system to simulate the neuron under varying conditions. Your grid must sweep through:
