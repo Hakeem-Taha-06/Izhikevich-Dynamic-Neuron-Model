@@ -56,7 +56,7 @@ INITIAL_STATE = np.array([V_0, W_0])
 # ==========================================
 T_START = 0.0
 T_END = 1000.0
-DT_EVAL = 0.1    # Required resolution for the Ground Truth dataset
+DT_EVAL = 0.01    # Required resolution for the Ground Truth dataset
 
 # Default External Current (pA)
 # Step-current protocol: 0 pA for the first T_STIM_ONSET ms,
