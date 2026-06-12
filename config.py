@@ -47,7 +47,7 @@ v_peak = 35.0   # Spike cutoff / peak voltage (mV)
 # ==========================================
 # [Membrane Potential v (mV), Recovery Variable w (pA)]
 V_0 = -60.0
-W_0 = 0.0  # Steady-state formulation for 2007 model
+W_0 = 0.0  # Textbook baseline starting condition
 
 INITIAL_STATE = np.array([V_0, W_0])
 
@@ -56,7 +56,7 @@ INITIAL_STATE = np.array([V_0, W_0])
 # ==========================================
 T_START = 0.0
 T_END = 1000.0
-DT_EVAL = 0.01    # Required resolution for the Ground Truth dataset
+DT_EVAL = 0.1    # Required resolution for the Ground Truth dataset
 
 # Default External Current (pA)
 # Step-current protocol: 0 pA for the first T_STIM_ONSET ms,

@@ -57,9 +57,9 @@ The Izhikevich model is NOT a continuous curve. All coders (except Role 4) must 
 #### A) Data Pipeline
 
 #### **Role 4: Lead Data Engineer (Training & Evaluation)**
-* **Objective:** You own the entire data generation pipeline. Your task is to produce mathematically flawless simulations of the **2007 Generalized Izhikevich Model**. You are responsible for generating both the massive dataset used to train the Neural Network, and the highly specific edge-case dataset used to evaluate the final model and mathematical solvers. 
+* **Objective:** You own the entire data generation pipeline. Your task is to produce mathematically flawless simulations of the **2007 Generalized Izhikevich Model**. Thanks to the adoption of the biological step-current protocol, you are responsible for generating a highly efficient, lean dataset for the Neural Network, alongside a specific edge-case dataset for final solver evaluation.
 * **Workspace:** `/src/numerical/ground_truth_generator.py`
-* **Deliverables:** 1. `/data/ground_truth_train.csv` (Target size: 40,000,000 rows / ~1 GB)
+* **Deliverables:** 1. `/data/ground_truth_train.csv` (Target size: 400,000 rows / ~10 MB)
   2. `/data/ground_truth_eval.csv` (Target size: 30,000 rows / < 1 MB)
 
 ---
@@ -73,7 +73,7 @@ The 2007 Izhikevich model dictates that when the membrane potential ($v$) hits $
 * Manually apply the mathematical reset to the state variables, log the discrete jump, and initialize a *new* solver run from that exact timestamp to continue.
 
 **2. Time-Dependent Current ($I_{ext}$)**
-To match the published reference literature, the neuron must start at rest. 
+To match the published reference literature, the neuron must start perfectly at rest. 
 * You must implement a Heaviside step function for the injected current.
 * **Logic:** For $t < 100.0$ ms, current is strictly 0.0 pA. For $t \ge 100.0$ ms, current becomes the active $I_{ext}$ target.
 
@@ -85,18 +85,17 @@ To match the published reference literature, the neuron must start at rest.
 ---
 
 ### **Part 2: Deliverable A (The ML Training Dataset)**
-This dataset teaches the AI how initial conditions and varying currents affect the Regular Spiking (RS) state.
+Because the current is 0.0 for the first 100 ms, all initial conditions will naturally converge to the resting state. Therefore, you do not need to sweep initial conditions. You only sweep the current.
 
+* **Fixed Initial Conditions:** $V_0 = -60.0$ mV, $W_0 = 0.0$ pA.
 * **Fixed Biological Parameters:** $a = 0.03$, $b = -2.0$, $c = -50.0$, $d = 100.0$.
-* **The Iteration Grid (4,000 unique runs):** Use `numpy.linspace(..., num=X)` to sweep:
-  * **Current Magnitude ($I_{ext}$):** Sweep 0.0 pA to 500.0 pA (`num=40`).
-  * **Initial Voltage ($V_0$):** Sweep -85.0 mV to -45.0 mV (`num=20`).
-  * **Initial Recovery ($W_0$):** Use exactly `[-50.0, -25.0, 0.0, 25.0, 50.0]`.
+* **The Iteration Grid (40 unique runs):** Use `numpy.linspace(..., num=40)` to sweep:
+  * **Current Magnitude ($I_{ext}$):** Sweep 0.0 pA to 500.0 pA.
 
 ---
 
 ### **Part 3: Deliverable B (The Physics Evaluation Dataset)**
-This dataset locks the initial conditions but mutates the biological parameters to test extreme edge-cases for the final IEEE paper.
+This dataset mutates the biological parameters to test extreme edge-cases for the final IEEE paper.
 
 * **Fixed Initial Conditions:** $V_0 = -60.0$ mV, $W_0 = 0.0$ pA.
 * **The Three Test Cases:**
@@ -109,7 +108,7 @@ This dataset locks the initial conditions but mutates the biological parameters 
 ### **Part 4: Output Format**
 Both CSV files must contain columns strictly ordered as: 
 `[Time, I_ext, V0, W0, a, b, c, d, v, w]`
-*(Note: Including the biological parameters in the CSV ensures the ML team and Evaluators can programmatically filter the data later).*
+*(Note: Including all parameters ensures the ML team and Evaluators can programmatically filter the data during training and plotting).*
 
 ---
 

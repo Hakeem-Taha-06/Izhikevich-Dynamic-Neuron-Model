@@ -161,12 +161,11 @@ def load_gt():
         return None
     df = pd.read_csv(path)
     
-    # Dynamically find column names for time, v and u/w
-    time_col = next((col for col in ['Time (ms)', 'time', 'Time'] if col in df.columns), 'Time (ms)')
-    v_col = next((col for col in ['v (mV)', 'v', 'voltage_v', 'V'] if col in df.columns), 'v (mV)')
-    u_col = next((col for col in ['w (pA)', 'w', 'u', 'recovery_w', 'U', 'W'] if col in df.columns), 'w (pA)')
+    # Dynamically find column names for v and u/w
+    v_col = next((col for col in ['v', 'voltage_v', 'V'] if col in df.columns), 'v')
+    u_col = next((col for col in ['w', 'u', 'recovery_w', 'U', 'W'] if col in df.columns), 'u')
     
-    return df[[time_col, v_col, u_col]].values
+    return df[['time', v_col, u_col]].values
 
 
 # ── Main ──────────────────────────────────────────────────────────
