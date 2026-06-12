@@ -57,30 +57,21 @@ The Izhikevich model is NOT a continuous curve. All coders (except Role 4) must 
 #### A) Data Pipeline
 
 #### **Role 4: Lead Data Engineer (Training & Evaluation)**
-* **Objective:** You own the entire data generation pipeline. Your task is to produce mathematically flawless simulations of the **2007 Generalized Izhikevich Model**. Thanks to the adoption of the biological step-current protocol, you are responsible for generating a highly efficient, lean dataset for the Neural Network, alongside a specific edge-case dataset for final solver evaluation.
+* **Objective:** You own the entire data generation pipeline. Your task is to produce mathematically flawless simulations of the **2007 Generalized Izhikevich Model**.
 * **Workspace:** `/src/numerical/ground_truth_generator.py`
-* **Deliverables:** 1. `/data/ground_truth_train.csv` (Target size: 400,000 rows / ~10 MB)
-  2. `/data/ground_truth_eval.csv` (Target size: 30,000 rows / < 1 MB)
+* **Deliverables:** 1. `/data/ground_truth_train.csv`
+  2. `/data/ground_truth_eval.csv`
 
 ---
 
-### **Part 1: The Core Physics Engine (Universal Rules)**
-These physical and mathematical constraints apply to **every** simulation you run, regardless of the dataset.
+### **Part 1: The Physics Engine (Universal Rules)**
+These rules apply to **every** simulation you run.
 
-**1. Segmented Integration (The Discrete Reset)**
-The 2007 Izhikevich model dictates that when the membrane potential ($v$) hits $v_{peak}$ (35.0 mV), it instantly resets to $c$, and the recovery variable ($w$) jumps by $d$. 
-* Continuous industrial solvers cannot handle this teleportation. You must use an **event tracker** to halt the solver the exact microsecond $v$ reaches 35.0 mV. 
-* Manually apply the mathematical reset to the state variables, log the discrete jump, and initialize a *new* solver run from that exact timestamp to continue.
-
-**2. Time-Dependent Current ($I_{ext}$)**
-To match the published reference literature, the neuron must start perfectly at rest. 
-* You must implement a Heaviside step function for the injected current.
-* **Logic:** For $t < 100.0$ ms, current is strictly 0.0 pA. For $t \ge 100.0$ ms, current becomes the active $I_{ext}$ target.
-
-**3. Solver & Resolution Constraints**
-* **Solver:** Strictly use the **Radau** method. Set relative tolerance (`rtol`) to 1e-6 and absolute tolerance (`atol`) to 1e-9.
-* **Time Grid:** All simulations run from $T_{start} = 0.0$ to $T_{end} = 1000.0$ ms. 
-* **Resolution:** You must step evaluate at exactly $dt = 0.1$ ms (yielding 10,000 steps per simulation).
+**1. Simulation Time & Step-Size**
+* **Duration:** $T_{start} = 0.0$ ms to $T_{end} = 1000.0$ ms.
+* **Time Step ($\Delta t$):** You must step evaluate at exactly $dt = 0.01$ ms.
+* **Resolution:** This yields exactly 100,000 time points per simulation.
+the current is fixed as in the `config.py`
 
 ---
 

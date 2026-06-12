@@ -1,0 +1,101 @@
+--- project-statement.pdf ---
+Dr. Muhammad Rushdi  
+Page 1 of 3   Program:  SBE 
+ Academic Year:  2025/2026 Semester:  Spring  2026 
+Course Code : SBEG108  Course Title : Numerical 
+Methods in 
+Biomedical 
+Engineering  
+Day: Saturday  Date : June 13th, 2026 
+ 
+Course Project  
+Numerical and Machine Learning Methods for 
+Differential Equations in Biomedical Engineering  
+Dear students,  
+• Students can work on the project in groups of 8-10 students . Please clearly 
+indicate the contribution of each group member . 
+• For the course projects, you are required to pick a problem in biomedical 
+engineering, show how it can be modeled by ordinary differential equations , 
+implement two numerical scheme s for solving these equations, and 
+implement an equivalent machine learning (or deep learning) scheme  for 
+solving these equations.  
+• More specifically, you need to  do the following : 
+1) Pick one of the seven problems  in the following book (attached):  
+ 
+[Schiesser -ODE-R-2014]  “Differential Equation Analysis in Biomedical Science 
+and Engineering: Ordinary Differential Equations with R ”, by William E. 
+Schiesser, Wiley 201 4 
+ 
+o 2. Diabetes Glucose Tolerance Test 79  
+o 3. Apoptosis 145  
+o 4. Dynamic Neuron Model 191  
+o 5. Stem Cell Differentiation 217  
+o 6. Acetylcholine Neurocycle 241  
+o 7. Tuberculosis with Differential Infectivity 321  
+o 8. Corneal Curvature 337  
+ 
+
+Dr. Muhammad Rushdi  
+Page 2 of 3 2) Send your selection to your representative who should in turn send all group 
+selection to the instructor at <mrushdi@eng1.cu.edu.eg >.  No topic can be 
+picked by more than one group.  
+3) Read and reproduce the results from the selected chapter . 
+4) Survey the literature for relevant papers on the same topic . Your survey must 
+include recent papers published in the last five years (2022 -2026) . 
+5) Implement two numerical solution scheme s for your problem ( in addition to  
+the one used in the selected book chapter) . 
+6) Implement an equivalent machine learning (or deep learning) scheme for 
+solving the ordinary differential  equations . 
+Check these resources for further information:   
+Artificial Neural Networks : Solving ODEs and PDEs  
+https://www.youtube.com/watch?v= -pMLqoMarEk   
+Solving Differential Equations with Deep Learning  
+https://compphysics.github.io/MachineLearning/doc/LectureNotes/_build/ht
+ml/chapter11.html  
+Neural ODE s: Differentiable ODE solvers with full GPU support and O(1) -
+memory backpropagation  
+https://github.com/Felixnguyen33/Neural -ODEs   
+Physics -based Deep Learning  
+https://physicsbaseddeeplearning.org/intro.html   
+https://github.com/thunil/Physics -Based -Deep -Learning   
+Physics -informed machine learning  
+https://www.nature.com/articles/s42254 -021-00314 -5  
+Integrating Physics -Based Modeling With Machine Learning: A Survey  
+https://beiyulincs.github.io/teach/fall_2020/papers/xiaowei.pdf   
+7) Compare the numerical and learning -based schemes based on accuracy 
+and time metrics  (consult the selected book chapter and reviewed papers for 
+suitable metrics) . 
+Dr. Muhammad Rushdi  
+Page 3 of 3 8) Write a report of 4 pages in the  LATEX -based  IEEE conference template  
+<https://www.ieee.org/conferences/publishing/templates.html >. You may 
+use Overleaf www.overleaf.com  for LaTeX document preparation with the 
+IEEE conference template.  
+9) The report shall include an introduction to the problem, a literature 
+review (surveying recent papers on the problem), explanation of the ODE 
+model, numerical solution steps, simulation results for the numerical and 
+machine -learning solutions, as well as suggestions for im provements and 
+future work.  
+10) Submit a one-PDF-file report , all LaTeX source files , the presentation file , 
+and the code files  (Python, R, or MATLAB).  
+11) Create a page for the project on GitHub  mirroring all the information in 
+the report, and any additional results you couldn’t include in the 4 -page 
+report.  
+12) Give a presentation on the chosen problem. The presentation should 
+include the following:  
+▪ Overview of the BME problem under consideration (10%)  
+▪ Explanation of the ODE model (10%)  
+▪ Explanation of the numerical and learning -based solution steps 
+(25%)  
+▪ Demonstrations and results of the numerical and learning -based 
+solutions (35%)  
+▪ A short survey of recent papers, books, and tools on the BME 
+problem under consideration (10%)  
+▪ Suggestions for improvements and future work (10%)  
+ 
+• All project selections  must be made and communicated to the course 
+instructor by Tuesday May 1 2th, 202 6. 
+Projects  must be submitted  by 7 AM  on Saturday  June 1 3th, 202 6. Online 
+group presentations should be tentatively scheduled on that day.  
+Thanks,  
+Muhammad Rushdi  
+ 

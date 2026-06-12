@@ -1,0 +1,190 @@
+--- mathematical_modeling.pdf ---
+Role 3: Mathematical Modeler Izhikevich DNM — Mathematical Theory Notes
+Mathematical Theory Notes
+Izhikevich Dynamic Neuron Model (DNM)
+Biophysical Generalized Form — Izhikevich (2007) & Schiesser (2014)
+Project: SBEG108 Numerical Methods in Biomedical Engineering — Spring 2026 Role: 3
+— Mathematical Modeler Workspace: src/theory/math theory notes.md
+1. Model Overview
+TheIzhikevich Dynamic Neuron Model (DNM) is a two-dimensional reduced neu-
+ron model due to Izhikevich [1], as presented in Chapter 4 of Schiesser (2014) [2]. It was
+introduced as a computationally efficient alternative to biophysically detailed models such
+as Hodgkin–Huxley and FitzHugh–Nagumo, yet retains the ability to reproduce a broad
+spectrum of experimentally observed cortical neuron firing patterns, including regular
+spiking (RS), fast spiking, intrinsically bursting, chattering, and low-threshold spiking
+modes.
+The model consists of two coupled first-order autonomous ODEs : the membrane
+potential v(t) and the recovery current w(t). A nonlinear voltage equation captures
+positive feedback and spike initiation; a linear recovery equation captures slower negative
+feedback. An applied input current I(t) acts as a time-varying forcing function.
+2. State Variables
+Table 1: State Variables of the DNM (Schiesser 2014, p. 192)
+Symbol Name Physical Meaning Units
+v(t) Membrane Potential Voltage-like variable; positive feedback drives spike initiation. mV
+w(t) Recovery Current Slow adaptation variable; negative feedback restoring vafter spike. pA
+t Time Sole independent variable (no spatial effects). ms
+I(t) is a prescribed external input, nota state variable.
+3. Parameters — Regular Spiking (RS) Configuration
+4. Governing Equations
+The DNM is governed by the following system (Izhikevich 2007; Schiesser 2014, p. 192):
+4.1 Voltage Equation (Membrane Potential)
+Cmdv
+dt=k(v−vr)(v−vt)−w+I(t) (1)
+1
+Role 3: Mathematical Modeler Izhikevich DNM — Mathematical Theory Notes
+Table 2: Model Parameters for RS Neocortical Pyramidal Neurons (Schiesser 2014, List-
+ing 4.1, p. 194)
+Symbol Value Units Physical Meaning
+Cm 100 pF Membrane capacitance
+vr −60 mV Resting membrane potential
+vt −40 mV Instantaneous spike threshold
+k 0.7 nS/mV Gain parameter; controls spike-
+initiation sharpness
+a 0.03 ms−1Time scale of recovery variable w
+b −2 nS Sensitivity of wto sub-threshold
+fluctuations of v
+c −50 mV After-spike reset value of v
+d 100 pA After-spike increment of w
+vpeak 35 mV Spike detection / visualization
+threshold
+I(t) 0 →70 pA Step DC current; switches at t=
+100 ms
+The three right-hand-side terms play distinct dynamical roles:
+Term Expression Role
+1 k(v−vr)(v−vt)Nonlinear excitatory term. Positive
+when v > v randv > v t; drives vupward —
+source of regenerative self-excitation (spike
+initiation).
+2−w Recovery (damping) term. Provides neg-
+ative feedback from w, opposing the rise in
+v.
+3 I(t) External forcing. DC step current; drives
+the neuron above threshold.
+4.2 Recovery Equation (Adaptation)
+dw
+dt=a[b(v−vr)−w] (2)
+With a= 0.03 and b=−2 (RS case), eq. (2) provides linear dynamics that relax w
+toward the value b(v−vr). Because b <0, the steady-state of wis negative when v > v r,
+enabling re-excitation. The time scale is set by a(smaller a⇒slower recovery).
+2
+Role 3: Mathematical Modeler Izhikevich DNM — Mathematical Theory Notes
+Note on notation: The simplified form dw/dt =a(bv−w), commonly seen in the 2003
+Izhikevich paper, is equivalent only when vr= 0. The correct biophysical generalized
+form used in this project is eq. (2) above.
+4.3 After-Spike Reset Conditions
+Applied after each integration step whenever v(t)≥vpeak:
+v←c=−50 mV (3)
+w←w+d=w+ 100 pA (4)
+These conditions model the rapid depolarization and repolarization of an action potential.
+The spike peak is padded to vpeak= 35 mV for visualization before the reset, producing
+the sharp spikes visible in numerical solutions.
+4.4 Input Current Function
+I(t) =(
+0 pA, t < 100 ms
+70 pA , t≥100 ms(5)
+A DC pulse simulating a step injection of current into the neuron at t= 100 ms.
+5. Initial Conditions
+Each first-order ODE requires one initial condition (Schiesser 2014, p. 197):
+v(0) = v0=−60 mV (resting potential vr) (6)
+w(0) = w0= 0 pA (quiescent state) (7)
+Time domain: t∈[0,1000] ms with 1001 uniform output points ( h= 1 ms).
+6. Nullcline Analysis
+Nullclines are curves in the ( v, w) phase plane along which one of the derivatives vanishes.
+Their intersections define the fixed points (equilibria) of the system.
+6.1v-Nullcline ( dv/dt = 0)
+Setting eq. (1) to zero:
+w=k(v−vr)(v−vt) +I(t) (8)
+This is an upward-opening parabola in the ( v, w) plane. Its vertex lies at v∗=
+(vr+vt)/2 =−50 mV. Increasing Ishifts the parabola upward , which can eliminate fixed
+points and trigger sustained spiking (bifurcation to limit cycle).
+3
+Role 3: Mathematical Modeler Izhikevich DNM — Mathematical Theory Notes
+6.2w-Nullcline ( dw/dt = 0)
+Setting eq. (2) to zero:
+w=b(v−vr) (9)
+This is a straight line through ( vr,0) = (−60,0) with slope b=−2. Because b <0, the
+line has a negative slope, meaning wdecreases as vincreases above rest — this enables
+re-excitation.
+6.3 Fixed Points
+Fixed points ( v∗, w∗) are found by solving eqs. (8) and (9) simultaneously:
+k(v∗−vr)(v∗−vt) +I=b(v∗−vr) (10)
+ForI= 0 (sub-threshold), the system has a stable fixed point near ( vr,0) = (−60,0)
+— the resting state. For I= 70 pA (supra-threshold), this fixed point may be destroyed
+or become unstable, and a stable limit cycle (periodic spiking) emerges.
+7. System Dynamics and Coupling
+The two ODEs are bidirectionally coupled through v:
+Eq. (1):The nonlinear term k(v−vr)(v−vt) drives rapid upswing (spike) when
+v > v randv > v t. The recovery term −wdamps excitation. I(t) provides external
+forcing.
+Eq.(2):The cross-coupling term ab(v−vr) links vtowdynamics. With b=−2,
+this term is negative when v > v r, causing wto decrease and thereby reducing
+inhibition in eq. (1) — enabling re-excitation.
+The net result is a relaxation oscillator : rapid spike in v→reset→slow recovery in
+w→re-excitation →repeat. This produces the limit-cycle behavior visible in the ( v, w)
+phase plane.
+8. Bifurcation Analysis
+9. Modeling Assumptions
+1.Spatial homogeneity (lumped model): The neuron is treated as a single com-
+partment with spatially uniform vandw. No diffusion; only time is the independent
+variable (ODEs, not PDEs).
+2.Phenomenological dynamics: The model is a two-dimensional reduction de-
+signed to reproduce observed spiking behavior, not a biophysically derived conductance-
+based model. waggregates multiple ionic currents into one slow variable.
+3.Prescribed input current: I(t) is an externally specified step function, indepen-
+dent of any state variable — constituting open-loop forcing.
+4.Instantaneous spike-reset: Action potentials are not resolved at the integration
+timescale. When v≥vpeak, state variables are instantaneously reset via eqs. (3)–(4),
+producing essentially discontinuous derivatives.
+4
+Role 3: Mathematical Modeler Izhikevich DNM — Mathematical Theory Notes
+Table 3: Parameters Relevant for Bifurcation Analysis
+Parameter Bifurcation Relevance
+I Primary bifurcation parameter. Varying Ifrom 0 to
+sufficiently large positive values crosses a bifurcation point
+(Hopf or SNIC) from quiescence to periodic spiking.
+a Controls inter-spike interval and firing frequency; varying
+ashifts between regular spiking and bursting regimes.
+b Determines sign and magnitude of sub-threshold w-
+coupling. Change of sign in balters topological structure
+of fixed points and stability.
+k Affects the curvature of the v-nullcline, governing the
+saddle-node bifurcation threshold and spike-initiation
+sharpness.
+vr, vt Shift fixed points and nullcline intersections. The differ-
+ence vt−vrcontrols the effective threshold distance for
+excitability.
+c, d After-spike reset values; determine post-spike trajectory
+and whether bursting or single-spike patterns emerge.
+5.Constant parameters: All model parameters ( Cm, vr, vt, k, a, b, c, d ) are time-
+invariant within each simulation.
+6.Nonstiff character: Schiesser (2014, p. 214) notes that explicit constant-step
+integrators (Euler, RKF45) produce acceptable solutions, suggesting the system is
+nonstiff under the RS parameter set.
+10. Notes for Numerical Implementation
+Step size: h= 1 ms over t∈[0,1000] ms (1001 points). Sharp spikes require a
+small step size.
+Spike-reset logic: After each step, check v≥vpeak= 35 mV. If true: v[i]←35
+(visualization), then v[i+ 1]← −50,w[i+ 1]←w[i+ 1] + 100. This logic is outside
+the ODE RHS function.
+Non-smooth derivatives: Spike resets produce effectively discontinuous deriva-
+tives, limiting achievable convergence order for high-order methods.
+Input current array: I(t) is stored as a time-indexed array, requiring the loop to
+pass the correct index to the ODE routine.
+ODE routine interface: neuron(t, y) takes current time tand state vector
+y= [v, w]⊤, returning derivative vector [ dv/dt, dw/dt ]⊤.
+5
+Role 3: Mathematical Modeler Izhikevich DNM — Mathematical Theory Notes
+References
+References
+[1] Izhikevich, E. M. (2007). Dynamical Systems in Neuroscience: The Geometry of Ex-
+citability and Bursting . MIT Press, Cambridge, MA.
+[2] Schiesser, W. E. (2014). Differential Equation Analysis in Biomedical Science and
+Engineering: Ordinary Differential Equation Applications with R . Wiley. Chapter 4,
+pp. 191–215.
+[3] Griffiths, G. W. and Schiesser, W. E. (2012). Traveling Wave Analysis of Partial Dif-
+ferential Equations . Cambridge University Press. [Eqs. (4.1)–(4.2) from pp. 272–277].
+[4] FitzHugh–Nagumo model. Scholarpedia .http://www.scholarpedia.org/article/
+FitzHugh-Nagumo_model
+SBEG108 Numerical Methods in Biomedical Engineering — Course Project Spring 2026 |Role
+3: Mathematical Modeler
+6
