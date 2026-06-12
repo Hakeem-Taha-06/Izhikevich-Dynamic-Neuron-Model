@@ -214,8 +214,16 @@ def evaluate_methods():
                 visual_match = 'Passed'
                 try:
                     from fastdtw import fastdtw
-                    d, _ = fastdtw(res[:,1], gt[:,1], dist=lambda x, y: abs(x - y))
-                    visual_match = fmt_table(float(d / len(res)))
+                    # Strictly downsample both to max ~10,000 points to prevent hanging
+                    target_len = 10000
+                    s_res = max(1, len(res) // target_len)
+                    s_gt = max(1, len(gt) // target_len)
+                    
+                    res_down = res[::s_res, 1]
+                    gt_down = gt[::s_gt, 1]
+                    
+                    d, _ = fastdtw(res_down, gt_down, dist=lambda x, y: abs(x - y))
+                    visual_match = fmt_table(float(d / len(res_down)))
                 except ImportError:
                     pass
                 
@@ -337,10 +345,6 @@ def evaluate_methods():
 import warnings
 
 def evaluate_stability(gt):
-    if gt is None:
-        print("  Ground Truth missing. Skipping stability analysis.")
-        return
-
     print("\n" + "="*60)
     print("  Stability Analysis (AB2 vs BE vs RK4) - Sweeping dt (h)")
     print("="*60)

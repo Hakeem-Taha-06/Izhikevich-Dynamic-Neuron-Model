@@ -40,9 +40,9 @@ These neurons start with an initial dense burst of spikes, then switch to a slow
 
 | Method | Pattern | Wall (s) | CPU (s) | Peak RAM (MB) | RMSE v | RMSE w | Spikes | Visual Match (DTW) |
 |---|---|---|---|---|---|---|---|---|
-| Adams-Bashforth 2 | Regular | 0.5181 | 0.5156 | 0.3081 | 3.232132 | 3.839893 | 6 | 0.016957 |
-| Backward Euler | Regular | 3.0143 | 2.8906 | 0.5939 | 5.187229 | 6.691409 | 6 | 0.016426 |
-| Runge-Kutta 4 | Regular | 0.4328 | 0.3906 | 0.307 | 3.953909 | 4.823050 | 6 | 0.013808 |
+| Adams-Bashforth 2 | Regular | 5.5113 | 5.4844 | 3.0547 | 1.603203 | 1.905993 | 6 | 0.013391 |
+| Backward Euler | Regular | 29.7126 | 29.5156 | 3.63 | 2.015869 | 2.410668 | 6 | 0.018117 |
+| Runge-Kutta 4 | Regular | 4.518 | 4.4219 | 3.0536 | 1.593039 | 1.893293 | 6 | 0.012587 |
 
 
 ## 5. Stability Analysis (dt Sweep)
@@ -59,14 +59,14 @@ See `stability_analysis.png` in `/outputs/figures/` for the empirical graph.
 
 | Step Size $h$ (ms) | AB2 RMSE | BE RMSE | RK4 RMSE | AB2 Spikes | BE Spikes | RK4 Spikes |
 |---|---|---|---|---|---|---|
-| 0.01 | 1.836 | 2.213 | 1.796 | 6 | 6 | 6 |
-| 0.05 | 2.904 | 3.935 | 2.169 | 6 | 6 | 6 |
-| 0.1 | 3.232 | 5.187 | 3.954 | 6 | 6 | 6 |
-| 0.5 | 7.449 | 9.933 | 5.459 | 6 | 6 | 6 |
-| 1.0 | 8.722 | 64.488 | 8.634 | 6 | 0 | 6 |
-| 2.0 | 8.541 | 32.965 | 11.137 | 6 | 0 | 6 |
-| 5.0 | 14.472 | 15.701 | 29.923 | 6 | 0 | 18 |
-| 10.0 | 28.348 | 12.236 | NaN/Expl | 7 | 0 | - |
+| 0.01 | 1.603 | 2.016 | 1.593 | 6 | 6 | 6 |
+| 0.05 | 2.720 | 3.779 | 2.116 | 6 | 6 | 6 |
+| 0.1 | 3.079 | 5.062 | 3.814 | 6 | 6 | 6 |
+| 0.5 | 7.398 | 9.877 | 5.421 | 6 | 6 | 6 |
+| 1.0 | 8.674 | 64.493 | 8.585 | 6 | 0 | 6 |
+| 2.0 | 8.541 | 32.966 | 11.115 | 6 | 0 | 6 |
+| 5.0 | 14.473 | 15.685 | 29.914 | 6 | 0 | 18 |
+| 10.0 | 28.341 | 12.213 | NaN/Expl | 7 | 0 | - |
 
 ## 6. Visualizations
 Individual plots combining the Voltage time-series, Recovery time-series, and Phase Portraits for each solver versus the Radau Ground Truth have been generated and saved cleanly in `/outputs/figures/`.
