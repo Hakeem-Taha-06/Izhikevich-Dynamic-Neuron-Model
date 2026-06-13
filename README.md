@@ -19,7 +19,25 @@ All methods are benchmarked against a high-resolution ground truth trajectory pr
 
 ---
 
-## 2. The ODE Model
+## 2. Team Contributions
+
+| # | Member | Role | Deliverable |
+|---|---|---|---|
+| 1 | Ziyad Ashraf | Team Leader & Editor | Final IEEE paper, GitHub repository management |
+| 2 | Adam Ghonaim | Literature Reviewer | Literature survey (2022–2026), theoretical background |
+| 3 | Youssef Ahmed | Mathematical Modeler | `config.py`, mathematical formulation notes |
+| 4 | Saif Mahmoud | Lead Data Engineer | Ground truth generation (`ground_truth_generator.py`) |
+| 5 | Abdullah Hani | Explicit Solver Developer | RK4 solver (`rk4.py`) |
+| 6 | Mahmoud Mazen | Implicit Solver Developer | Backward Euler solver (`backward_euler.py`) |
+| 7 | Ahmed Abdulqader | Multi-Step Solver Developer | Adams–Bashforth 2 solver (`adams_bashforth2.py`) |
+| 8 | Islam Refaey | ML Architect | PINN network design (`architecture.py`) |
+| 9 | Hakeem Mohammed | ML Loss Function Designer | Physics loss & spike masking (`physics_loss.py`) |
+| 10 | Seif Hegazy | ML Training Operator | Training loop & optimization (`train.py`) |
+| 11 | Mohammed Hamdy | Master Evaluator & Analyst | Evaluation pipeline & visualizations (`evaluator.py`) |
+
+---
+
+## 3. The ODE Model
 
 The Izhikevich (2007) generalized biophysical model describes the membrane potential $v$ (mV) and recovery variable $w$ (pA) of a spiking neuron:
 
@@ -55,7 +73,7 @@ The **discrete reset** is not part of the ODE — it is a conditional event appl
 
 ---
 
-## 3. Numerical Solution Methods
+## 4. Numerical Solution Methods
 
 All numerical solvers are implemented in `src/numerical/` and share the parameters from `config.py`. Outputs are NumPy arrays of shape `(N, 3)` with columns `[Time (ms), v (mV), w (pA)]`.
 
@@ -93,7 +111,7 @@ The discrete spike reset invalidates the AB2 history. A **history flush protocol
 
 ---
 
-## 4. Machine Learning Approach — Physics-Informed Neural Network
+## 5. Machine Learning Approach — Physics-Informed Neural Network
 
 The PINN is implemented in `src/ml_model/` and trained using `pinn_training_colab.ipynb` (Google Colab/Kaggle compatible).
 
@@ -139,9 +157,9 @@ $$\mathcal{L}_{total} = \lambda_{data} \cdot \mathcal{L}_{data} + \lambda_{phys}
 
 ---
 
-## 5. Results
+## 6. Results
 
-### 5.1 Numerical Solver Comparison (dt = 0.01 ms)
+### 6.1 Numerical Solver Comparison (dt = 0.01 ms)
 
 | Method | Order | RMSE $v$ (mV) | RMSE $w$ (pA) | Spikes | Wall Time (s) |
 |---|---|---|---|---|---|
@@ -151,7 +169,7 @@ $$\mathcal{L}_{total} = \lambda_{data} \cdot \mathcal{L}_{data} + \lambda_{phys}
 
 All three solvers correctly detect 6 spikes at $h = 0.01$ ms and reproduce the Regular Spiking pattern faithfully.
 
-### 5.2 Stability Analysis
+### 6.2 Stability Analysis
 
 | Step Size $h$ (ms) | AB2 RMSE $v$ | BE RMSE $v$ | RK4 RMSE $v$ | AB2 Spikes | BE Spikes | RK4 Spikes |
 |---|---|---|---|---|---|---|
@@ -163,7 +181,7 @@ All three solvers correctly detect 6 spikes at $h = 0.01$ ms and reproduce the R
 
 † Backward Euler detects 0 spikes at $h = 1$ ms — the implicit solver converges to a spurious sub-threshold fixed point.
 
-### 5.3 PINN Results
+### 6.3 PINN Results
 
 The PINN successfully captures:
 - ✅ **Subthreshold dynamics** — learned primarily from the physics loss with only 10% data supervision
@@ -175,7 +193,7 @@ The PINN successfully captures:
 
 ---
 
-## 6. Literature Survey
+## 7. Literature Survey
 
 | Reference | Year | Relevance |
 |---|---|---|
@@ -189,7 +207,7 @@ The PINN successfully captures:
 
 ---
 
-## 7. Suggestions for Improvements and Future Work
+## 8. Suggestions for Improvements and Future Work
 
 1. **Time-windowed PINNs:** Train separate networks on short time windows (~100 ms each) to handle the repeated spike discontinuities more effectively, stitching predictions at window boundaries.
 2. **Hybrid architecture:** Use the PINN for subthreshold dynamics and a discrete event handler for the spike reset, combining the strengths of both approaches.
@@ -199,7 +217,7 @@ The PINN successfully captures:
 
 ---
 
-## 8. Repository Structure
+## 9. Repository Structure
 
 ```
 Izhikevich-Dynamic-Neuron-Model/
@@ -236,7 +254,7 @@ Izhikevich-Dynamic-Neuron-Model/
 
 ---
 
-## 9. How to Run
+## 10. How to Run
 
 ### Generate Ground Truth
 ```bash
@@ -263,7 +281,7 @@ python verify_pinn.py
 
 ---
 
-## 10. Dependencies
+## 11. Dependencies
 
 ```
 numpy
