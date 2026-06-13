@@ -47,9 +47,10 @@ These neurons start with an initial dense burst of spikes, then switch to a slow
 
 | Method | Pattern | Wall (s) | CPU (s) | Peak RAM (MB) | RMSE v | RMSE w | Spikes | Visual Match (DTW) |
 |---|---|---|---|---|---|---|---|---|
-| Adams-Bashforth 2 | Regular | 5.6603 | 5.5 | 3.0547 | 1.603203 | 1.905993 | 6 | 0.047237 |
-| Backward Euler | Regular | 69.0913 | 64.7969 | 3.628 | 2.015869 | 2.410668 | 6 | 0.069929 |
-| Runge-Kutta 4 | Regular | 11.0352 | 10.625 | 3.0536 | 1.593039 | 1.893293 | 6 | 0.046444 |
+| Adams-Bashforth 2 | Regular | 14.8275 | 13.6406 | 3.0547 | 1.603203 | 1.905993 | 6 | 0.047237 |
+| Backward Euler | Regular | 59.1837 | 55.2812 | 3.6405 | 2.015869 | 2.410668 | 6 | 0.069929 |
+| Runge-Kutta 4 | Regular | 10.8617 | 9.5938 | 3.0536 | 1.593039 | 1.893293 | 6 | 0.046444 |
+| PINN Surrogate | Regular | 0.4398 | 1.7969 | 3.1378 | 0.976741 | 1.005322 | 6 | 0.199663 |
 
 
 ## 5. Stability Analysis (dt Sweep)

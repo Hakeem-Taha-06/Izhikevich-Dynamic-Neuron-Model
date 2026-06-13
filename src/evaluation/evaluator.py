@@ -50,12 +50,24 @@ try:
 except ImportError:
     pass
 
-#try:
-#    import src.numerical.ml_surrogate as ml_module
-#    from src.numerical.ml_surrogate import solve_ml
-#    SOLVERS.append(('PINN Surrogate', solve_ml, ml_module))
-#except ImportError as e:
-#    print("  [Warning] Could not load ML Surrogate:", e)
+try:
+    import torch
+    from src.ml_model.architecture import IzhikevichPINN, predict_trajectory
+    
+    def solve_ml(dt=None):
+        if dt is None: dt = config.DT_EVAL
+        model = IzhikevichPINN()
+        weights_path = os.path.join(_ROOT, 'data', 'pinn_model_dsf10.pt')
+        if os.path.exists(weights_path):
+            model.load_state_dict(torch.load(weights_path, map_location=torch.device('cpu')))
+        else:
+            print(f"  [Warning] Weights not found at {weights_path}")
+        model.eval()
+        return predict_trajectory(model, t_start=config.T_START, t_end=config.T_END, dt=dt)
+        
+    SOLVERS.append(('PINN Surrogate', solve_ml, config)) # passing config as module stub
+except ImportError as e:
+    print("  [Warning] Could not load ML Surrogate:", e)
 
 # ── Biological Pattern Parameters ────────────────────────────────
 PATTERNS = {
