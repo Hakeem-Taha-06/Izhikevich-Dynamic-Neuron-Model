@@ -100,14 +100,16 @@ def execute_ml_training_pipeline(
     lr_adam: float = 1e-3,
     lr_lbfgs: float = 0.1,
     data_subsample_factor: int = 100,
+    physics_batch_size: int = 16384,
 ) -> np.ndarray:
     """Execute the full PINN training pipeline.
 
-    Both phases use full-batch training.  The dataset (~100K points)
-    fits comfortably in GPU memory (~1 GB peak on an RTX 3050 6GB).
+    Physics loss is batched to fit in GPU VRAM (autograd with
+    create_graph=True is the dominant memory consumer).  Data loss
+    and IC loss are full-batch since they operate on tiny tensors.
 
-    Phase 1 — Adam: Full-batch gradient descent for fast convergence.
-    Phase 2 — L-BFGS: Full-batch quasi-Newton refinement.
+    Phase 1 — Adam: Mini-batched physics + full-batch data/IC.
+    Phase 2 — L-BFGS: Fixed physics subsample + full-batch data/IC.
 
     Parameters
     ----------
@@ -126,6 +128,10 @@ def execute_ml_training_pipeline(
     data_subsample_factor : int
         Keep every Nth data point for supervised loss (default 100).
         Factor=1 uses all points (no subsampling).
+    physics_batch_size : int
+        Number of collocation points per physics loss evaluation
+        (default 16384).  Controls GPU VRAM usage — the autograd
+        computation graph scales linearly with this value.
 
     Returns
     -------
@@ -144,7 +150,6 @@ def execute_ml_training_pipeline(
 
     # ---- 2. Split: sparse data vs dense collocation ----
     # Collocation points (ALL time points — for physics loss)
-    # requires_grad is set per-step so autograd can compute dv/dt
     colloc_t = all_t                                        # (N, 1)
 
     # Sparse data points (every Nth — for supervised data loss)
@@ -154,8 +159,9 @@ def execute_ml_training_pipeline(
         all_v_gt[sparse_idx], all_w_gt[sparse_idx]
     ], dim=1)                                                # (M, 2)
     n_data = len(sparse_idx)
+    n_colloc = len(colloc_t)
 
-    print(f"Physics collocation points: {n_total:,} (all)")
+    print(f"Physics collocation points: {n_total:,} (all, batched {physics_batch_size})")
     print(f"Data supervision points:    {n_data:,} (every {data_subsample_factor}th)")
     print(f"Data/Physics ratio:         1:{data_subsample_factor}")
 
@@ -170,65 +176,83 @@ def execute_ml_training_pipeline(
     lambda_data = 50.0
 
     # ==================================================================
-    # Phase 1 — Adam (full-batch)
+    # Phase 1 — Adam (batched physics, full-batch data)
     # ==================================================================
     optimizer_adam = optim.Adam(model.parameters(), lr=lr_adam)
     model.train()
     print(f"\n{'=' * 60}")
-    print(f"Phase 1: Adam ({adam_epochs} epochs, full-batch)")
-    print(f"  Physics: {n_total:,} collocation pts")
-    print(f"  Data:    {n_data:,} sparse pts")
+    print(f"Phase 1: Adam ({adam_epochs} epochs)")
+    print(f"  Physics: {n_total:,} collocation pts (batched {physics_batch_size})")
+    print(f"  Data:    {n_data:,} sparse pts (full-batch)")
     print(f"{'=' * 60}")
 
     for epoch in range(1, adam_epochs + 1):
-        # Enable grad tracking on t for autograd inside physics loss
-        t_phys = colloc_t.clone().requires_grad_(True)
+        epoch_loss_total = 0.0
+        epoch_loss_data = 0.0
+        epoch_loss_phys = 0.0
+        epoch_loss_ic = 0.0
+        n_batches = 0
 
-        # ── Physics loss (all collocation points) ─────────────
-        margin = get_margin(epoch, total_epochs)
-        loss_phys = compute_physics_loss(
-            model, t_phys, peak_margin=margin
-        )
+        # Shuffle collocation points each epoch
+        perm = torch.randperm(n_colloc, device=device)
 
-        # ── Data loss (sparse observations) ───────────────────
-        pred_data = model(data_t)                         # (M, 2)
-        loss_data = mse_criterion(pred_data, data_targets)
+        for i in range(0, n_colloc, physics_batch_size):
+            idx = perm[i:i + physics_batch_size]
+            t_batch = colloc_t[idx].clone().requires_grad_(True)
 
-        # ── IC loss ───────────────────────────────────────────
-        loss_ic = compute_ic_loss(model)
+            # ── Physics loss (batched collocation) ────────────
+            margin = get_margin(epoch, total_epochs)
+            loss_phys = compute_physics_loss(
+                model, t_batch, peak_margin=margin
+            )
 
-        # ── Total ─────────────────────────────────────────────
-        total_loss = (
-            lambda_data * loss_data
-            + lambda_phys * loss_phys
-            + lambda_ic * loss_ic
-        )
+            # ── Data loss (full sparse set — only 1K pts) ────
+            pred_data = model(data_t)                     # (M, 2)
+            loss_data = mse_criterion(pred_data, data_targets)
 
-        optimizer_adam.zero_grad()
-        total_loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        optimizer_adam.step()
+            # ── IC loss ───────────────────────────────────────
+            loss_ic = compute_ic_loss(model)
 
-        if epoch % 2000 == 0 or epoch == 1:
+            # ── Total ─────────────────────────────────────────
+            total_loss = (
+                lambda_data * loss_data
+                + lambda_phys * loss_phys
+                + lambda_ic * loss_ic
+            )
+
+            optimizer_adam.zero_grad()
+            total_loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer_adam.step()
+
+            epoch_loss_total += total_loss.item()
+            epoch_loss_data += loss_data.item()
+            epoch_loss_phys += loss_phys.item()
+            epoch_loss_ic += loss_ic.item()
+            n_batches += 1
+
+        if epoch % 500 == 0 or epoch == 1:
+            nb = max(n_batches, 1)
             print(
                 f"  Epoch [{epoch:4d}/{adam_epochs}]  "
-                f"Total: {total_loss.item():.4e}  "
-                f"Data: {loss_data.item():.4e}  "
-                f"Phys: {loss_phys.item():.4e}  "
-                f"IC: {loss_ic.item():.4e}  "
+                f"Total: {epoch_loss_total/nb:.4e}  "
+                f"Data: {epoch_loss_data/nb:.4e}  "
+                f"Phys: {epoch_loss_phys/nb:.4e}  "
+                f"IC: {epoch_loss_ic/nb:.4e}  "
                 f"Margin: {margin:.1f}"
             )
 
     # ==================================================================
-    # Phase 2 — L-BFGS (full-batch, same data)
+    # Phase 2 — L-BFGS (fixed physics subsample + full-batch data)
     # ==================================================================
     print(f"\n{'=' * 60}")
-    print(f"Phase 2: L-BFGS refinement ({lbfgs_epochs} epochs, full-batch)")
+    print(f"Phase 2: L-BFGS refinement ({lbfgs_epochs} epochs)")
     print(f"{'=' * 60}")
 
-    # L-BFGS uses the SAME collocation and data tensors as Adam.
-    # No separate subsampling needed — 100K points fit in memory.
-    lbfgs_t = colloc_t.clone().requires_grad_(True)
+    # Fixed subsample for L-BFGS (full 100K would OOM with autograd)
+    n_lbfgs = min(physics_batch_size, n_colloc)
+    lbfgs_idx = torch.randperm(n_colloc, device=device)[:n_lbfgs]
+    lbfgs_t = colloc_t[lbfgs_idx].clone().requires_grad_(True)
 
     optimizer_lbfgs = optim.LBFGS(
         model.parameters(), lr=lr_lbfgs,
