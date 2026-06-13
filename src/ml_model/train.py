@@ -6,9 +6,8 @@ Course: SBEG108 - Numerical Methods in Biomedical Engineering
 Role 10: ML Training Loop (Fully Operational Implementation)
 
 Training pipeline for the Izhikevich PINN model:
-  Phase 1 — Adam optimiser with mini-batch SGD for fast convergence.
-  Phase 2 — L-BFGS quasi-Newton refinement on a fixed sample for
-            precise final fitting.
+  Phase 1 — Adam optimiser with full-batch gradient descent.
+  Phase 2 — L-BFGS quasi-Newton refinement on the same data.
 
 Ground truth CSV schema (from Role 4 / ROLES.md):
     Sim_ID | Time (ms) | I_ext (pA) | v (mV) | w (pA)
@@ -16,6 +15,12 @@ Ground truth CSV schema (from Role 4 / ROLES.md):
 The network takes only time (t) as input and predicts [v(t), w(t)].
 The step-current protocol I_ext(t) is handled internally by the
 physics loss (Role 9).
+
+Sparse Data / Dense Physics strategy:
+  - Physics loss is computed on ALL ~100K collocation points.
+  - Data loss is computed on a SPARSE subset (every Nth point).
+  This forces the network to learn the ODE dynamics from physics,
+  with sparse data anchors teaching the spike resets.
 """
 
 import os
@@ -25,7 +30,6 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
 
 # Add root folder and src folder to sys path for cross-module imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
@@ -57,35 +61,31 @@ except ImportError:
 
 
 # =====================================================================
-# 1. DATASET
+# 1. CSV LOADER
 # =====================================================================
 
-class IzhikevichDataset(Dataset):
-    """PyTorch Dataset wrapping the ground truth CSV from Role 4.
+def load_ground_truth(csv_path, device):
+    """Load ground truth CSV and return tensors on the target device.
 
-    Each sample is a single time-step row.  The network takes only
-    time (t) as input, so the dataset provides:
-      - t:    time value (ms)
-      - v_gt: ground truth membrane potential (mV)
-      - w_gt: ground truth recovery variable (pA)
+    Parameters
+    ----------
+    csv_path : str
+        Path to the CSV with columns: Sim_ID, Time (ms), I_ext (pA),
+        v (mV), w (pA).
+    device : torch.device
+        Target device (cpu or cuda).
 
-    Ground truth CSV schema:
-        Sim_ID | Time (ms) | I_ext (pA) | v (mV) | w (pA)
+    Returns
+    -------
+    t : torch.Tensor, shape (N, 1)
+    v_gt : torch.Tensor, shape (N, 1)
+    w_gt : torch.Tensor, shape (N, 1)
     """
-
-    def __init__(self, csv_path):
-        df = pd.read_csv(csv_path)
-
-        # Pre-convert columns to tensors for fast __getitem__
-        self.t    = torch.tensor(df["Time (ms)"].values, dtype=torch.float32).unsqueeze(1)
-        self.v_gt = torch.tensor(df["v (mV)"].values,    dtype=torch.float32).unsqueeze(1)
-        self.w_gt = torch.tensor(df["w (pA)"].values,    dtype=torch.float32).unsqueeze(1)
-
-    def __len__(self):
-        return len(self.t)
-
-    def __getitem__(self, idx):
-        return (self.t[idx], self.v_gt[idx], self.w_gt[idx])
+    df = pd.read_csv(csv_path)
+    t    = torch.tensor(df["Time (ms)"].values, dtype=torch.float32).unsqueeze(1).to(device)
+    v_gt = torch.tensor(df["v (mV)"].values,    dtype=torch.float32).unsqueeze(1).to(device)
+    w_gt = torch.tensor(df["w (pA)"].values,    dtype=torch.float32).unsqueeze(1).to(device)
+    return t, v_gt, w_gt
 
 
 # =====================================================================
@@ -97,16 +97,17 @@ def execute_ml_training_pipeline(
     model_save_path: str = "outputs/models/pinn_model.pt",
     adam_epochs: int = 8000,
     lbfgs_epochs: int = 100,
-    batch_size: int = 4096,
     lr_adam: float = 1e-3,
     lr_lbfgs: float = 0.1,
-    lbfgs_sample_size: int = 16384,
+    data_subsample_factor: int = 100,
 ) -> np.ndarray:
     """Execute the full PINN training pipeline.
 
-    Phase 1 — Adam: Mini-batch SGD for fast initial convergence.
-    Phase 2 — L-BFGS: Full-batch quasi-Newton refinement on a fixed
-              random sample of collocation points.
+    Both phases use full-batch training.  The dataset (~100K points)
+    fits comfortably in GPU memory (~1 GB peak on an RTX 3050 6GB).
+
+    Phase 1 — Adam: Full-batch gradient descent for fast convergence.
+    Phase 2 — L-BFGS: Full-batch quasi-Newton refinement.
 
     Parameters
     ----------
@@ -118,15 +119,13 @@ def execute_ml_training_pipeline(
         Number of Adam training epochs (default 8000).
     lbfgs_epochs : int
         Number of L-BFGS refinement epochs (default 100).
-    batch_size : int
-        Mini-batch size for the Adam phase (default 4096).
     lr_adam : float
         Learning rate for Adam (default 1e-3).
     lr_lbfgs : float
         Learning rate for L-BFGS (default 0.1).
-    lbfgs_sample_size : int
-        Number of points sampled for L-BFGS full-batch phase
-        (default 16384).
+    data_subsample_factor : int
+        Keep every Nth data point for supervised loss (default 100).
+        Factor=1 uses all points (no subsampling).
 
     Returns
     -------
@@ -135,98 +134,101 @@ def execute_ml_training_pipeline(
     """
     total_epochs = adam_epochs + lbfgs_epochs
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Device: {device}")
 
     # ---- 1. Data Ingestion ----
     print(f"Loading ground truth from: {ground_truth_csv_path}")
-    dataset = IzhikevichDataset(ground_truth_csv_path)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-    print(f"Dataset: {len(dataset):,} samples loaded.")
+    all_t, all_v_gt, all_w_gt = load_ground_truth(ground_truth_csv_path, device)
+    n_total = len(all_t)
+    print(f"Total samples: {n_total:,}")
 
-    # ---- 2. Model Setup ----
+    # ---- 2. Split: sparse data vs dense collocation ----
+    # Collocation points (ALL time points — for physics loss)
+    # requires_grad is set per-step so autograd can compute dv/dt
+    colloc_t = all_t                                        # (N, 1)
+
+    # Sparse data points (every Nth — for supervised data loss)
+    sparse_idx = torch.arange(0, n_total, data_subsample_factor)
+    data_t       = all_t[sparse_idx]                         # (M, 1)
+    data_targets = torch.cat([
+        all_v_gt[sparse_idx], all_w_gt[sparse_idx]
+    ], dim=1)                                                # (M, 2)
+    n_data = len(sparse_idx)
+
+    print(f"Physics collocation points: {n_total:,} (all)")
+    print(f"Data supervision points:    {n_data:,} (every {data_subsample_factor}th)")
+    print(f"Data/Physics ratio:         1:{data_subsample_factor}")
+
+    # ---- 3. Model Setup ----
     model = IzhikevichPINN().to(device)
     mse_criterion = nn.MSELoss()
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
 
     # Loss weights
-    # λ_phys: physics residual is dimensionless after normalization
-    # λ_ic: strong IC anchoring (comparison repo uses 200)
     lambda_phys = 1.0
     lambda_ic = 200.0
     lambda_data = 50.0
 
     # ==================================================================
-    # Phase 1 — Adam
+    # Phase 1 — Adam (full-batch)
     # ==================================================================
     optimizer_adam = optim.Adam(model.parameters(), lr=lr_adam)
     model.train()
     print(f"\n{'=' * 60}")
-    print(f"Phase 1: Adam optimiser ({adam_epochs} epochs, batch_size={batch_size})")
+    print(f"Phase 1: Adam ({adam_epochs} epochs, full-batch)")
+    print(f"  Physics: {n_total:,} collocation pts")
+    print(f"  Data:    {n_data:,} sparse pts")
     print(f"{'=' * 60}")
 
     for epoch in range(1, adam_epochs + 1):
-        epoch_loss = 0.0
-        n_batches = 0
+        # Enable grad tracking on t for autograd inside physics loss
+        t_phys = colloc_t.clone().requires_grad_(True)
 
-        for batch in dataloader:
-            t_batch, v_gt, w_gt = [x.to(device) for x in batch]
+        # ── Physics loss (all collocation points) ─────────────
+        margin = get_margin(epoch, total_epochs)
+        loss_phys = compute_physics_loss(
+            model, t_phys, peak_margin=margin
+        )
 
-            # t must have requires_grad for autograd inside physics loss
-            t_batch = t_batch.clone().requires_grad_(True)
+        # ── Data loss (sparse observations) ───────────────────
+        pred_data = model(data_t)                         # (M, 2)
+        loss_data = mse_criterion(pred_data, data_targets)
 
-            # Forward pass — network takes only t
-            predictions = model(t_batch)                          # (B, 2)
-            targets = torch.cat([v_gt, w_gt], dim=1)              # (B, 2)
+        # ── IC loss ───────────────────────────────────────────
+        loss_ic = compute_ic_loss(model)
 
-            # Data loss
-            loss_data = mse_criterion(predictions, targets)
+        # ── Total ─────────────────────────────────────────────
+        total_loss = (
+            lambda_data * loss_data
+            + lambda_phys * loss_phys
+            + lambda_ic * loss_ic
+        )
 
-            # Physics loss with curriculum margin
-            margin = get_margin(epoch, total_epochs)
-            loss_phys = compute_physics_loss(
-                model, t_batch, peak_margin=margin
-            )
-
-            # IC loss
-            loss_ic = compute_ic_loss(model)
-
-            # Total
-            total_loss = (
-                lambda_data * loss_data
-                + lambda_phys * loss_phys
-                + lambda_ic * loss_ic
-            )
-
-            optimizer_adam.zero_grad()
-            total_loss.backward()
-
-            # Gradient clipping for stability
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-
-            optimizer_adam.step()
-
-            epoch_loss += total_loss.item()
-            n_batches += 1
+        optimizer_adam.zero_grad()
+        total_loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        optimizer_adam.step()
 
         if epoch % 2000 == 0 or epoch == 1:
-            avg = epoch_loss / max(n_batches, 1)
-            print(f"  Epoch [{epoch:4d}/{adam_epochs}]  Avg Loss: {avg:.6f}  "
-                  f"Margin: {margin:.1f} mV")
+            print(
+                f"  Epoch [{epoch:4d}/{adam_epochs}]  "
+                f"Total: {total_loss.item():.4e}  "
+                f"Data: {loss_data.item():.4e}  "
+                f"Phys: {loss_phys.item():.4e}  "
+                f"IC: {loss_ic.item():.4e}  "
+                f"Margin: {margin:.1f}"
+            )
 
     # ==================================================================
-    # Phase 2 — L-BFGS
+    # Phase 2 — L-BFGS (full-batch, same data)
     # ==================================================================
     print(f"\n{'=' * 60}")
-    print(f"Phase 2: L-BFGS refinement ({lbfgs_epochs} epochs, "
-          f"sample={lbfgs_sample_size})")
+    print(f"Phase 2: L-BFGS refinement ({lbfgs_epochs} epochs, full-batch)")
     print(f"{'=' * 60}")
 
-    n_sample = min(lbfgs_sample_size, len(dataset))
-    indices = torch.randperm(len(dataset))[:n_sample]
-
-    # Build fixed L-BFGS tensors
-    lbfgs_t    = dataset.t[indices].clone().to(device).requires_grad_(True)
-    lbfgs_v_gt = dataset.v_gt[indices].to(device)
-    lbfgs_w_gt = dataset.w_gt[indices].to(device)
+    # L-BFGS uses the SAME collocation and data tensors as Adam.
+    # No separate subsampling needed — 100K points fit in memory.
+    lbfgs_t = colloc_t.clone().requires_grad_(True)
 
     optimizer_lbfgs = optim.LBFGS(
         model.parameters(), lr=lr_lbfgs,
@@ -237,18 +239,16 @@ def execute_ml_training_pipeline(
     for epoch in range(1, lbfgs_epochs + 1):
 
         def closure():
-            """L-BFGS requires a closure that recomputes the loss."""
             optimizer_lbfgs.zero_grad()
-
-            predictions = model(lbfgs_t)
-            targets = torch.cat([lbfgs_v_gt, lbfgs_w_gt], dim=1)
-
-            loss_data = mse_criterion(predictions, targets)
 
             margin = get_margin(adam_epochs + epoch, total_epochs)
             loss_phys = compute_physics_loss(
                 model, lbfgs_t, peak_margin=margin,
             )
+
+            pred_data = model(data_t)
+            loss_data = mse_criterion(pred_data, data_targets)
+
             loss_ic = compute_ic_loss(model)
 
             total = (
@@ -261,7 +261,7 @@ def execute_ml_training_pipeline(
 
         loss_val = optimizer_lbfgs.step(closure)
 
-        if epoch % 100 == 0 or epoch == 1:
+        if epoch % 20 == 0 or epoch == 1:
             print(f"  L-BFGS [{epoch:4d}/{lbfgs_epochs}]  Loss: {loss_val.item():.6f}")
 
     # ==================================================================
@@ -275,7 +275,6 @@ def execute_ml_training_pipeline(
     model.eval()
     results = predict_trajectory(model)
 
-    # Returns the strict project interface: shape (N, 3) as [Time, v, w]
     print(f"Output trajectory shape: {results.shape}  (expected (N, 3))")
     return results
 
@@ -307,9 +306,9 @@ if __name__ == "__main__":
         output = execute_ml_training_pipeline(
             ground_truth_csv_path=mock_csv,
             model_save_path="outputs/models/pinn_model.pt",
-            adam_epochs=50,         # small for testing
-            lbfgs_epochs=10,        # small for testing
-            batch_size=2048,
+            adam_epochs=50,
+            lbfgs_epochs=10,
+            data_subsample_factor=100,
         )
         print(f"\n[OK] SUCCESS! Output shape: {output.shape}")
         print(f"First row [Time, v, w]: {output[0]}")
