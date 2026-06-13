@@ -22,8 +22,15 @@ This report provides an in-depth evaluation of numerical integration methods app
 
 ## 3. Biological Firing Patterns Analysis
 
+### Izhikevich 2007 Exact Parameters
+| Pattern | $C_m$ | $k$ | $v_r$ | $v_t$ | $v_{peak}$ | $a$ | $b$ | $c$ | $d$ | $I_{ext}$ |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Regular Spiking (RS) | 100 | 0.7 | -60 | -40 | 35 | 0.03 | -2 | -50 | 100 | 70 |
+| Chattering (CH) | 50 | 1.5 | -60 | -40 | 25 | 0.03 | 1 | -40 | 150 | 300 |
+| Intrinsically Bursting (IB) | 150 | 1.2 | -75 | -45 | 50 | 0.01 | 5 | -56 | 130 | 600 |
+
 ### Regular Spiking (RS)
-This is the most typical behavior of excitatory neurons in the cortex. They fire isolated spikes with spike-frequency adaptation (the time between spikes increases). ($c=-50, d=100$).
+This is the most typical behavior of excitatory neurons in the cortex. They fire isolated spikes with spike-frequency adaptation (the time between spikes increases).
 **Results:** All solvers successfully matched the Ground Truth (Radau). RK4 was perfectly aligned, while Backward Euler showed slight phase shifting due to numerical damping.
 
 ### Chattering (CH)
@@ -40,9 +47,10 @@ These neurons start with an initial dense burst of spikes, then switch to a slow
 
 | Method | Pattern | Wall (s) | CPU (s) | Peak RAM (MB) | RMSE v | RMSE w | Spikes | Visual Match (DTW) |
 |---|---|---|---|---|---|---|---|---|
-| Adams-Bashforth 2 | Regular | 5.5113 | 5.4844 | 3.0547 | 1.603203 | 1.905993 | 6 | 0.013391 |
-| Backward Euler | Regular | 29.7126 | 29.5156 | 3.63 | 2.015869 | 2.410668 | 6 | 0.018117 |
-| Runge-Kutta 4 | Regular | 4.518 | 4.4219 | 3.0536 | 1.593039 | 1.893293 | 6 | 0.012587 |
+| Adams-Bashforth 2 | Regular | 14.8275 | 13.6406 | 3.0547 | 1.603203 | 1.905993 | 6 | 0.047237 |
+| Backward Euler | Regular | 59.1837 | 55.2812 | 3.6405 | 2.015869 | 2.410668 | 6 | 0.069929 |
+| Runge-Kutta 4 | Regular | 10.8617 | 9.5938 | 3.0536 | 1.593039 | 1.893293 | 6 | 0.046444 |
+| PINN Surrogate | Regular | 0.4398 | 1.7969 | 3.1378 | 0.976741 | 1.005322 | 6 | 0.199663 |
 
 
 ## 5. Stability Analysis (dt Sweep)
