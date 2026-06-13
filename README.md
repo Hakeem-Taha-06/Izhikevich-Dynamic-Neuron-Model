@@ -1,91 +1,91 @@
-# Izhikevich Dynamic Neuron Model & ML-PINN Pipeline
+# Numerical and Physics-Informed Machine Learning Solutions for the Izhikevich Dynamic Neuron Model
 
-Welcome to the **Izhikevich Dynamic Neuron Model** repository. This project is a collaborative effort by an 11-person university engineering team to implement, solve, train, and evaluate the biophysical Izhikevich neuron model using traditional numerical integration methods and Physics-Informed Neural Networks (PINNs).
-
-**Model Reference:** Izhikevich, E. M. (2007). *Dynamical Systems in Neuroscience: The Geometry of Excitability and Bursting*. MIT Press.
-
-**Governing Equations (2007 Generalized Biophysical Form):**
-
-$$C_m \frac{dv}{dt} = k(v - v_r)(v - v_t) - w + I_{ext}$$
-
-$$\frac{dw}{dt} = a\{ b(v - v_r) - w \}$$
-
-**After-spike reset:** If $v \ge v_{peak}$, then $v \leftarrow c$, $w \leftarrow w + d$.
+This repository contains the codebase, numerical solvers, and Physics-Informed Neural Network (PINN) implementations for simulating the Izhikevich dynamic neuron model. The project rigorously benchmarks classical numerical integration schemes against modern scientific machine learning approaches.
 
 ---
 
-## 📂 Project Directory Structure
+## 📖 Overview
+
+Dynamic neuron models are essential in computational neuroscience for simulating the electrical activity of biological neurons. The **Izhikevich model** provides an elegant mathematical formulation that balances biophysical realism (like the Hodgkin-Huxley model) with exceptional computational efficiency (like Integrate-and-Fire models).
+
+This project explores the governing ODEs and the discrete after-spike reset conditions of the Izhikevich model. We implement and evaluate three numerical integration schemes:
+1. **Runge-Kutta 4 (RK4)**
+2. **Backward Euler (BE)**
+3. **Adams-Bashforth 2 (AB2)**
+
+These are benchmarked against a high-accuracy **Radau ground truth**. A Physics-Informed Neural Network (PINN) is also developed, exposing critical challenges imposed by the non-differentiable spike reset discontinuity.
+
+---
+
+## 🧮 Mathematical Modeling
+
+The Izhikevich model is a two-variable ODE system governing the membrane potential $v(t)$ and a slow recovery current $w(t)$, driven by an external input $I(t)$:
+
+$$ C_m \frac{dv}{dt} = k(v-v_r)(v-v_t) - w + I(t) $$
+$$ \frac{dw}{dt} = a[b(v-v_r) - w] $$
+
+### The Discrete Reset Mechanism
+An instantaneous discrete reset is applied whenever the membrane potential reaches the spike peak ($v \geq 35$ mV):
+$$ \text{if } v \geq 35 \text{ mV, then } v \leftarrow c \text{ and } w \leftarrow w + d $$
+
+---
+
+## ⚙️ Numerical Solvers
+
+### 1. Runge-Kutta 4 (RK4)
+A single-step explicit method achieving $O(h^4)$ accuracy. It provides the best accuracy-to-speed trade-off and is robust against spike discontinuities across a wide range of step sizes.
+
+### 2. Adams-Bashforth 2 (AB2)
+A multi-step explicit method with $O(h^2)$ accuracy. To handle the discrete spikes, we implemented a custom **History Flush** protocol that clears the derivative history at each spike. AB2 proved to be the fastest solver and achieved the lowest RMSE at moderate step sizes.
+
+### 3. Backward Euler (BE)
+An unconditionally stable implicit method. While it prevents divergence at large step sizes, its non-convex residual admits spurious sub-threshold fixed points at $h \geq 1.0$ ms, completely silencing the spiking behavior.
+
+---
+
+## 🧠 Physics-Informed Neural Network (PINN)
+
+A PINN architecture consisting of 6 hidden layers × 128 neurons was developed to map normalized time to biological-scale outputs. The physics loss penalizes ODE residuals via auto-differentiation, employing a *curriculum spike-masking* protocol to avoid explosive gradients near the reset discontinuity.
+
+### PINN Training Phases:
+1. **Phase 1 (Adam)**: 8,000 epochs of initial convergence.
+2. **Phase 2 (L-BFGS)**: 100 epochs of fine-tuning quasi-Newton refinement.
+
+---
+
+## 📊 Key Results
+
+### Solver Performance Summary ($h=0.1$ ms)
+| Method | Order | RMSE ($v$) | Time (s) |
+|--------|-------|------------|----------|
+| **AB2** | $O(h^2)$ | **2.78 mV** | **0.054 s** |
+| **RK4** | $O(h^4)$ | 3.62 mV | 0.080 s |
+| **BE**  | $O(h^1)$ | 4.97 mV | 0.468 s |
+
+*Note: All three numerical methods detected 6 spikes at this step size. At larger step sizes ($h \geq 1.0$ ms), explicit methods explode, while BE maintains stability but fails biologically by detecting 0 spikes.*
+
+### PINN Surrogate Performance
+The composite training loss converged successfully, confirming that the curriculum spike-masking pipeline is mathematically sound. However, during inference:
+- **Voltage RMSE**: 31.9 mV
+- **Spike Count**: 0 spikes
+
+Two correctable root causes for this failure were identified:
+1. **Data Mismatch**: The training CSV was inadvertently generated with a constant $I=300$ pA over 100 ms instead of the $0 \to 70$ pA step over 1000 ms, preventing the model from learning the quiescent-to-spiking transition.
+2. **Inference Mismatch**: A constant inference current was applied to all time steps, creating a train/inference distribution mismatch.
+
+Once these data pipeline issues are corrected, the PINN architecture is expected to become a viable competitive continuous-time surrogate.
+
+---
+
+## 🛠️ Repository Structure
 
 ```text
-Izhikevich-Dynamic-Neuron-Model/
-├── config.py                 # Master configuration file (constants & kinetics)
-├── main.py                   # Role 1: Main pipeline execution entry point
-├── requirements.txt          # Python package dependencies
-├── LICENSE                   # Project license
-├── ROLES.md                  # Detailed team labor distribution and contracts
-├── README.md                 # Project documentation (this file)
-│
-├── data/                     # Raw input data
-│   └── README.md             # Role 4: saves ground_truth.csv here
-│
-├── outputs/
-│   ├── figures/              # Role 11: saves graphs here
-│   └── models/               # Role 10: saves .pt weights here
-│
-└── src/
-    ├── numerical/
-    │   ├── __init__.py
-    │   ├── ground_truth_generator.py # Role 4's workspace
-    │   ├── rk4.py           # Role 5's workspace
-    │   ├── rk4_notes.md
-    │   ├── backward_euler.py         # Role 6's workspace
-    │   ├── backward_euler_notes.md
-    │   ├── adams_bashforth2.py        # Role 7's workspace
-    │   └── adams_bashforth2_notes.md
-    ├── ml_model/
-    │   ├── __init__.py
-    │   ├── architecture.py           # Role 8's workspace
-    │   ├── physics_loss.py           # Role 9's workspace
-    │   ├── train.py                  # Role 10's workspace
-    │   └── ml_notes.md
-    └── evaluation/
-        ├── __init__.py
-        ├── evaluator.py              # Role 11's workspace
-        └── eval_notes.md
+├── data/                  # Ground truth CSVs generated via Radau integration
+├── outputs/figures/       # Evaluation plots (Phase portraits, Time-series)
+├── src/
+│   ├── numerical/         # RK4, AB2, and BE solver implementations
+│   ├── ml_model/          # PINN architecture, Fourier Features, and Training loop
+│   └── evaluation/        # Master evaluator for RMSE, DTW, and Stability Analysis
+├── config.py              # Centralized physical parameters and simulation settings
+└── README.md              # Project documentation (This file)
 ```
-
----
-
-## 🤝 Team Labor Distribution & Workspace Contracts
-
-The project is structured across 11 distinct engineering roles. See [ROLES.md](ROLES.md) for full details.
-
-| Phase | Role | Workspace |
-|---|---|---|
-| **Phase 0** | Role 1: Team Leader | `main.py` |
-| | Role 2: Literature Reviewer | N/A (Paper Only) |
-| | Role 3: Math Modeler | `src/theory/math_theory_notes.md` |
-| **Phase 1** | Role 4: Data Engineer | `src/numerical/ground_truth_generator.py` |
-| | Role 5: Explicit Solver (RK4) | `src/numerical/rk4.py` |
-| | Role 6: Implicit Solver (BE) | `src/numerical/backward_euler.py` |
-| | Role 7: Multi-Step (AB2) | `src/numerical/adams_bashforth2.py` |
-| **Phase 2** | Role 8: ML Architect | `src/ml_model/architecture.py` |
-| | Role 9: ML Loss Designer | `src/ml_model/physics_loss.py` |
-| | Role 10: ML Training Operator | `src/ml_model/train.py` |
-| **Phase 3** | Role 11: Master Evaluator | `src/evaluation/evaluator.py` |
-
-Each role has a `.md` notes file alongside their `.py` file. **You must fill in your notes file** with the method documentation, tables, and analysis described inside it.
-
----
-
-## 📐 Master Interface Contract
-
-**ALL numerical methods and AI models must strictly adhere to the following output format:**
-
-- **Return Type:** NumPy array of shape `(N, 3)`
-- **Column Order:** `[Time, v, w]`
-  1. `Time` (ms)
-  2. `v` (membrane potential in mV)
-  3. `w` (recovery variable in pA)
-
-*Note: The discrete reset (If v >= v_peak, then v ← c, w ← w + d) must be correctly enforced in all numerical methods except Role 4, which handles segmented integration.*
